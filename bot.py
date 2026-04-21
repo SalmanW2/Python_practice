@@ -1,4 +1,5 @@
 import os
+import asyncio
 from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
@@ -11,40 +12,30 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Helper functions
-def user_exists(telegram_id):
+def store_user(telegram_id, username):
+    # Check if user exists, if not insert into pending_users
     res = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
-    return len(res.data) > 0
-
-def add_pending(telegram_id, username):
-    supabase.table("pending_users").insert({"telegram_id": telegram_id, "username": username}).execute()
+    if not res.data:
+        supabase.table("pending_users").insert({"telegram_id": telegram_id, "username": username}).execute()
 
 def store_message(telegram_id, message_text):
     supabase.table("messages").insert({"telegram_id": telegram_id, "message": message_text}).execute()
 
-# Bot handlers
 async def start(update: Update, context):
     uid = update.effective_user.id
     uname = update.effective_user.username or "No username"
-    if user_exists(uid):
-        await update.message.reply_text("✅ Welcome back! Use /help")
-    else:
-        add_pending(uid, uname)
-        await update.message.reply_text("⏳ Request sent to admin. Wait for approval.")
-
-async def help_command(update: Update, context):
-    await update.message.reply_text("Commands:\n/start - Check status\n/help - This message")
+    store_user(uid, uname)
+    await update.message.reply_text(f"✅ Your ID: {uid}\nUsername: {uname}")
 
 async def echo(update: Update, context):
-    user_id = update.effective_user.id
-    user_text = update.message.text
-    store_message(user_id, user_text)
-    await update.message.reply_text(f"You said: {user_text}")
+    uid = update.effective_user.id
+    text = update.message.text
+    store_message(uid, text)
+    await update.message.reply_text(f"ID: {uid} said: {text}")
 
-# Create Telegram Application
+# Build Telegram app
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("help", help_command))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
 # FastAPI app
@@ -59,13 +50,16 @@ async def webhook(request: Request):
 
 @fastapi_app.get("/")
 async def root():
-    return {"status": "Bot is running with webhooks"}
+    return {"status": "ok"}
+
+async def set_webhook():
+    # Await the coroutine
+    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost')}/webhook"
+    await telegram_app.bot.set_webhook(webhook_url)
+    print(f"Webhook set to {webhook_url}")
 
 if __name__ == "__main__":
-    # Set webhook on startup (only once, but Render restarts often)
-    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost')}/webhook"
-    telegram_app.bot.set_webhook(webhook_url)
-    print(f"Webhook set to {webhook_url}")
-    
+    # Set webhook
+    asyncio.run(set_webhook())
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
