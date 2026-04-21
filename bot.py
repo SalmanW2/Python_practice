@@ -1,12 +1,10 @@
 import os
 import threading
 from fastapi import FastAPI
-from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from supabase import create_client
 import uvicorn
 
-load_dotenv("config.env")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
