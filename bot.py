@@ -1,16 +1,15 @@
 import os
-import threading
-from fastapi import FastAPI
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from supabase import create_client
+from fastapi import FastAPI, Request
 import uvicorn
-
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+app = FastAPI()
 
 def user_exists(telegram_id):
     res = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
@@ -40,25 +39,26 @@ async def echo(update, context):
     store_message(user_id, user_text)
     await update.message.reply_text(f"You said: {user_text}")
 
-def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+# Telegram bot setup
+telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("help", help_command))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
-    def run_bot():
-        app.run_polling()
+# FastAPI routes
+@app.post("/webhook")
+async def webhook(request: Request):
+    req = await request.json()
+    await telegram_app.process_update(req)
+    return {"status": "ok"}
 
-    threading.Thread(target=run_bot).start()
-
-    fastapi_app = FastAPI()
-
-    @fastapi_app.get("/")
-    async def root():
-        return {"status": "Bot is running"}
-
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
-    main()
+    # Set webhook
+    webhook_url = f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/webhook"
+    telegram_app.bot.set_webhook(webhook_url)
+    # Start FastAPI
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
