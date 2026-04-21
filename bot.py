@@ -1,65 +1,55 @@
 import os
-import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from supabase import create_client
-import uvicorn
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# Environment Variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Telegram Application Setup
+ptb_app = Application.builder().token(BOT_TOKEN).build()
 
-def store_user(telegram_id, username):
-    # Check if user exists, if not insert into pending_users
-    res = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
-    if not res.data:
-        supabase.table("pending_users").insert({"telegram_id": telegram_id, "username": username}).execute()
+# /start Command Logic
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    # User details format karna
+    user_info = (
+        f"Aapki Details:\n"
+        f"ID: {user.id}\n"
+        f"First Name: {user.first_name}\n"
+        f"Username: @{user.username if user.username else 'N/A'}"
+    )
+    
+    # User ko reply bhej dena
+    await update.message.reply_text(user_info)
 
-def store_message(telegram_id, message_text):
-    supabase.table("messages").insert({"telegram_id": telegram_id, "message": message_text}).execute()
+# Command add karna
+ptb_app.add_handler(CommandHandler("start", start))
 
-async def start(update: Update, context):
-    uid = update.effective_user.id
-    uname = update.effective_user.username or "No username"
-    store_user(uid, uname)
-    await update.message.reply_text(f"✅ Your ID: {uid}\nUsername: {uname}")
+# FastAPI Lifespan (Webhook Setup)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await ptb_app.initialize()
+    if RENDER_URL:
+        webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
+        await ptb_app.bot.set_webhook(url=webhook_url)
+    await ptb_app.start()
+    
+    yield
+    
+    await ptb_app.stop()
+    await ptb_app.shutdown()
 
-async def echo(update: Update, context):
-    uid = update.effective_user.id
-    text = update.message.text
-    store_message(uid, text)
-    await update.message.reply_text(f"ID: {uid} said: {text}")
+# FastAPI App Setup
+app = FastAPI(lifespan=lifespan)
 
-# Build Telegram app
-telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-
-# FastAPI app
-fastapi_app = FastAPI()
-
-@fastapi_app.post("/webhook")
-async def webhook(request: Request):
-    req = await request.json()
-    update = Update.de_json(req, telegram_app.bot)
-    await telegram_app.process_update(update)
-    return {"ok": True}
-
-@fastapi_app.get("/")
-async def root():
+# Webhook Endpoint
+@app.post(f"/{BOT_TOKEN}")
+async def process_webhook(request: Request):
+    req_json = await request.json()
+    update = Update.de_json(req_json, ptb_app.bot)
+    await ptb_app.process_update(update)
     return {"status": "ok"}
-
-async def set_webhook():
-    # Await the coroutine
-    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost')}/webhook"
-    await telegram_app.bot.set_webhook(webhook_url)
-    print(f"Webhook set to {webhook_url}")
-
-if __name__ == "__main__":
-    # Set webhook
-    asyncio.run(set_webhook())
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
