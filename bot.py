@@ -3,33 +3,44 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from supabase import create_client, Client
 
-# Environment Variables
+# Variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Telegram Application Setup
+# Supabase aur Telegram Setup
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 ptb_app = Application.builder().token(BOT_TOKEN).build()
 
-# /start Command Logic
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # User details format karna
+    # Supabase mein data save karna (upsert se duplicate bach jayega)
+    data = {
+        "telegram_id": user.id,
+        "username": user.username,
+        "first_name": user.first_name
+    }
+    
+    try:
+        supabase.table('users').upsert(data).execute()
+    except Exception as e:
+        print(f"Supabase Error: {e}")
+
+    # User ko reply
     user_info = (
-        f"Aapki Details:\n"
+        f"Aapki Details Database me save ho gayi hain!\n"
         f"ID: {user.id}\n"
-        f"First Name: {user.first_name}\n"
+        f"Name: {user.first_name}\n"
         f"Username: @{user.username if user.username else 'N/A'}"
     )
-    
-    # User ko reply bhej dena
     await update.message.reply_text(user_info)
 
-# Command add karna
 ptb_app.add_handler(CommandHandler("start", start))
 
-# FastAPI Lifespan (Webhook Setup)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await ptb_app.initialize()
@@ -37,16 +48,12 @@ async def lifespan(app: FastAPI):
         webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
         await ptb_app.bot.set_webhook(url=webhook_url)
     await ptb_app.start()
-    
     yield
-    
     await ptb_app.stop()
     await ptb_app.shutdown()
 
-# FastAPI App Setup
 app = FastAPI(lifespan=lifespan)
 
-# Webhook Endpoint
 @app.post(f"/{BOT_TOKEN}")
 async def process_webhook(request: Request):
     req_json = await request.json()
