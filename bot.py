@@ -16,18 +16,18 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "https://python-practice-ennb.onrender.com")
 
-# Google Scopes
 SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/gmail.readonly',
     'openid'
 ]
 
-# Clients
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 ptb_app = Application.builder().token(BOT_TOKEN).build()
 
-# Helper function to create Flow instance
+# Temporary memory to store Google login sessions (Solves the Verifier Error)
+oauth_sessions = {}
+
 def get_flow():
     return Flow.from_client_secrets_file(
         'credentials.json',
@@ -38,7 +38,6 @@ def get_flow():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # Create or update user as pending in Supabase
     try:
         supabase.table("users").upsert({
             "telegram_id": user.id,
@@ -47,18 +46,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "status": "pending"
         }).execute()
     except Exception as e:
-        logging.error(f"Supabase upsert error: {e}")
+        logging.error(f"Supabase error: {e}")
 
-    # Generate Google Login URL
     try:
         flow = get_flow()
-        # Add access_type and include_granted_scopes
         auth_url, _ = flow.authorization_url(
             prompt='consent', 
             access_type='offline', 
-            include_granted_scopes='true',
-            state=str(user.id) # Passing telegram ID as state
+            state=str(user.id)
         )
+        
+        # Save the flow object in memory so /callback can use it
+        oauth_sessions[str(user.id)] = flow 
         
         keyboard = [[InlineKeyboardButton("Login with Google", url=auth_url)]]
         await update.message.reply_text(
@@ -66,8 +65,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-         logging.error(f"Flow creation error: {e}")
-         await update.message.reply_text("Error generating login link. Check logs.")
+         logging.error(f"Link generation error: {e}")
+
+# IMPORTANT: Command handler added back (Solves the No Reply Error)
+ptb_app.add_handler(CommandHandler("start", start))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,18 +95,19 @@ async def google_callback(request: Request):
     if not code or not tg_id:
         return {"error": "Invalid callback data. Missing code or state."}
 
+    # Retrieve the exact flow object saved during /start
+    flow = oauth_sessions.get(tg_id)
+    if not flow:
+        return {"error": "Session expired or invalid. Please type /start in the bot again."}
+
     try:
-        flow = get_flow()
-        # Using fetch_token with just the code, no PKCE required here for standard web flow
         flow.fetch_token(code=code)
         creds = flow.credentials
         
-        # Get user's email address
         user_info_service = build('oauth2', 'v2', credentials=creds)
         user_info = user_info_service.userinfo().get().execute()
         email = user_info.get("email")
 
-        # Store tokens and email in Supabase
         token_json = {
             "token": creds.token,
             "refresh_token": creds.refresh_token,
@@ -115,14 +117,16 @@ async def google_callback(request: Request):
             "scopes": creds.scopes
         }
 
-        # Update the database
         supabase.table("users").update({
             "email": email,
             "auth_token": token_json
         }).eq("telegram_id", int(tg_id)).execute()
 
-        return {"message": "Success! Your account is linked. You can close this tab and return to the bot."}
+        # Clear the memory once done
+        del oauth_sessions[tg_id]
+
+        return {"message": "Success! Your account is linked. You can close this tab and return to the Telegram bot."}
         
     except Exception as e:
         logging.error(f"Callback Error: {e}")
-        return {"error": f"An error occurred during authentication. Check server logs. Details: {e}"}
+        return {"error": f"Authentication failed. Details: {e}"}
