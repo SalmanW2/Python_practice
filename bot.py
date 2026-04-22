@@ -7,53 +7,68 @@ from supabase import create_client, Client
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
-# Configuration
+# Environment Variables Configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "https://python-practice-ennb.onrender.com")
 
-# Google Scopes
+# Google Scopes (Permissions)
 SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/gmail.readonly',
     'openid'
 ]
 
-# Clients
+# Initialize Supabase and Telegram Bot
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 ptb_app = Application.builder().token(BOT_TOKEN).build()
+
+# --- BOT COMMANDS ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # Create or update user as pending in Supabase
-    supabase.table("users").upsert({
-        "telegram_id": user.id,
-        "username": user.username,
-        "first_name": user.first_name,
-        "status": "pending"
-    }).execute()
+    # 1. Supabase mein user ka data 'pending' status ke sath daalna
+    try:
+        supabase.table("users").upsert({
+            "telegram_id": user.id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "status": "pending"
+        }).execute()
+    except Exception as e:
+        print(f"Supabase Insert Error: {e}")
 
-    # Generate Google Login URL
-    flow = Flow.from_client_secrets_file(
-        'credentials.json',
-        scopes=SCOPES,
-        redirect_uri=f"{RENDER_URL}/callback"
-    )
-    
-    # 'state' passes telegram_id to the callback to identify the user
-    auth_url, _ = flow.authorization_url(
-        prompt='consent', 
-        access_type='offline', 
-        state=str(user.id)
-    )
-    
-    keyboard = [[InlineKeyboardButton("Login with Google", url=auth_url)]]
-    await update.message.reply_text(
-        "Welcome! To use the Smart Email Assistant, please link your Google account.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    # 2. Google Login URL Generate karna
+    try:
+        flow = Flow.from_client_secrets_file(
+            'credentials.json',
+            scopes=SCOPES,
+            redirect_uri=f"{RENDER_URL}/callback"
+        )
+        
+        # 'state' ke zariye hum user ki Telegram ID pass karte hain
+        auth_url, _ = flow.authorization_url(
+            prompt='consent', 
+            access_type='offline', 
+            state=str(user.id)
+        )
+        
+        keyboard = [[InlineKeyboardButton("Login with Google", url=auth_url)]]
+        await update.message.reply_text(
+            "Welcome! To use the Smart Email Assistant, please link your Google account.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        print(f"Google Auth URL Error: {e}")
+        await update.message.reply_text("Error generating login link. Check server logs.")
+
+# YAHI WO LINE HAI JO MISSING THI
+ptb_app.add_handler(CommandHandler("start", start))
+
+
+# --- FASTAPI & WEBHOOK SETUP ---
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,35 +93,40 @@ async def google_callback(request: Request):
     tg_id = request.query_params.get("state")
     
     if not code or not tg_id:
-        return {"error": "Invalid callback data"}
+        return {"error": "Invalid callback data. Please try logging in again."}
 
-    flow = Flow.from_client_secrets_file(
-        'credentials.json',
-        scopes=SCOPES,
-        redirect_uri=f"{RENDER_URL}/callback"
-    )
+    try:
+        flow = Flow.from_client_secrets_file(
+            'credentials.json',
+            scopes=SCOPES,
+            redirect_uri=f"{RENDER_URL}/callback"
+        )
+        
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        
+        # Get user's email address
+        user_info_service = build('oauth2', 'v2', credentials=creds)
+        user_info = user_info_service.userinfo().get().execute()
+        email = user_info.get("email")
+
+        # Store tokens and email in Supabase
+        token_json = {
+            "token": creds.token,
+            "refresh_token": creds.refresh_token,
+            "token_uri": creds.token_uri,
+            "client_id": creds.client_id,
+            "client_secret": creds.client_secret,
+            "scopes": creds.scopes
+        }
+
+        supabase.table("users").update({
+            "email": email,
+            "auth_token": token_json
+        }).eq("telegram_id", int(tg_id)).execute()
+
+        return {"message": "Success! Your Google account is securely linked. You can close this tab and return to Telegram."}
     
-    flow.fetch_token(code=code)
-    creds = flow.credentials
-    
-    # Get user's email address
-    user_info_service = build('oauth2', 'v2', credentials=creds)
-    user_info = user_info_service.userinfo().get().execute()
-    email = user_info.get("email")
-
-    # Store tokens and email in Supabase
-    token_json = {
-        "token": creds.token,
-        "refresh_token": creds.refresh_token,
-        "token_uri": creds.token_uri,
-        "client_id": creds.client_id,
-        "client_secret": creds.client_secret,
-        "scopes": creds.scopes
-    }
-
-    supabase.table("users").update({
-        "email": email,
-        "auth_token": token_json
-    }).eq("telegram_id", int(tg_id)).execute()
-
-    return {"message": "Success! Your account is linked. You can close this tab and return to the bot."}
+    except Exception as e:
+        print(f"Callback Error: {e}")
+        return {"error": "An error occurred during authentication. Check server logs."}
