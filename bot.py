@@ -1,4 +1,5 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -7,29 +8,37 @@ from supabase import create_client, Client
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
-# Environment Variables Configuration
+logging.basicConfig(level=logging.INFO)
+
+# Configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "https://python-practice-ennb.onrender.com")
 
-# Google Scopes (Permissions)
+# Google Scopes
 SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/gmail.readonly',
     'openid'
 ]
 
-# Initialize Supabase and Telegram Bot
+# Clients
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 ptb_app = Application.builder().token(BOT_TOKEN).build()
 
-# --- BOT COMMANDS ---
+# Helper function to create Flow instance
+def get_flow():
+    return Flow.from_client_secrets_file(
+        'credentials.json',
+        scopes=SCOPES,
+        redirect_uri=f"{RENDER_URL}/callback"
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # 1. Supabase mein user ka data 'pending' status ke sath daalna
+    # Create or update user as pending in Supabase
     try:
         supabase.table("users").upsert({
             "telegram_id": user.id,
@@ -38,21 +47,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "status": "pending"
         }).execute()
     except Exception as e:
-        print(f"Supabase Insert Error: {e}")
+        logging.error(f"Supabase upsert error: {e}")
 
-    # 2. Google Login URL Generate karna
+    # Generate Google Login URL
     try:
-        flow = Flow.from_client_secrets_file(
-            'credentials.json',
-            scopes=SCOPES,
-            redirect_uri=f"{RENDER_URL}/callback"
-        )
-        
-        # 'state' ke zariye hum user ki Telegram ID pass karte hain
+        flow = get_flow()
+        # Add access_type and include_granted_scopes
         auth_url, _ = flow.authorization_url(
             prompt='consent', 
             access_type='offline', 
-            state=str(user.id)
+            include_granted_scopes='true',
+            state=str(user.id) # Passing telegram ID as state
         )
         
         keyboard = [[InlineKeyboardButton("Login with Google", url=auth_url)]]
@@ -61,14 +66,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-        print(f"Google Auth URL Error: {e}")
-        await update.message.reply_text("Error generating login link. Check server logs.")
-
-# YAHI WO LINE HAI JO MISSING THI
-ptb_app.add_handler(CommandHandler("start", start))
-
-
-# --- FASTAPI & WEBHOOK SETUP ---
+         logging.error(f"Flow creation error: {e}")
+         await update.message.reply_text("Error generating login link. Check logs.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -93,15 +92,11 @@ async def google_callback(request: Request):
     tg_id = request.query_params.get("state")
     
     if not code or not tg_id:
-        return {"error": "Invalid callback data. Please try logging in again."}
+        return {"error": "Invalid callback data. Missing code or state."}
 
     try:
-        flow = Flow.from_client_secrets_file(
-            'credentials.json',
-            scopes=SCOPES,
-            redirect_uri=f"{RENDER_URL}/callback"
-        )
-        
+        flow = get_flow()
+        # Using fetch_token with just the code, no PKCE required here for standard web flow
         flow.fetch_token(code=code)
         creds = flow.credentials
         
@@ -120,13 +115,14 @@ async def google_callback(request: Request):
             "scopes": creds.scopes
         }
 
+        # Update the database
         supabase.table("users").update({
             "email": email,
             "auth_token": token_json
         }).eq("telegram_id", int(tg_id)).execute()
 
-        return {"message": "Success! Your Google account is securely linked. You can close this tab and return to Telegram."}
-    
+        return {"message": "Success! Your account is linked. You can close this tab and return to the bot."}
+        
     except Exception as e:
-        print(f"Callback Error: {e}")
-        return {"error": "An error occurred during authentication. Check server logs."}
+        logging.error(f"Callback Error: {e}")
+        return {"error": f"An error occurred during authentication. Check server logs. Details: {e}"}
