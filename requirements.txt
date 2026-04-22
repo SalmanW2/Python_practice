@@ -1,4 +1,6 @@
 python-telegram-bot
-supabase
 fastapi
 uvicorn
+supabase
+google-auth-oauthlib
+google-api-python-client
