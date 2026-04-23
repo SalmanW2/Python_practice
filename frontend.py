@@ -16,6 +16,7 @@ async def landing_page():
     <html>
     <head>
         <title>Smart Email Assistant</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         {FAVICON_SVG}
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -26,26 +27,26 @@ async def landing_page():
     <body class="bg-slate-50 text-slate-900">
         <nav class="p-6 flex justify-between items-center max-w-7xl mx-auto">
             <div class="text-2xl font-bold text-blue-600 flex items-center gap-2">
-                <span>📧</span> MailAgent AI
+                <span>📧</span> <span class="hidden sm:inline">MailAgent AI</span>
             </div>
             <a href="/admin/login" class="text-slate-600 hover:text-blue-600 font-semibold transition-colors">Admin Login</a>
         </nav>
 
-        <main class="flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
-            <h1 class="text-6xl font-extrabold tracking-tight mb-6">Control Your Inbox with <span class="text-blue-600">Agentic AI</span></h1>
-            <p class="text-xl text-slate-600 mb-10 max-w-2xl">
+        <main class="flex flex-col items-center justify-center min-h-[70vh] text-center px-4 mt-8">
+            <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">Control Your Inbox with <br class="hidden md:block"><span class="text-blue-600">Agentic AI</span></h1>
+            <p class="text-lg md:text-xl text-slate-600 mb-10 max-w-2xl">
                 Read email summaries, draft professional replies, and manage your communications seamlessly directly through Telegram.
             </p>
-            <div class="flex gap-4">
-                <a href="https://t.me/Private_Mail_Assistent_Bot" class="bg-blue-600 text-white px-8 py-4 rounded-xl shadow-xl hover:bg-blue-700 transition-all font-bold text-lg">Start on Telegram</a>
-                <a href="#features" class="bg-white border border-slate-200 px-8 py-4 rounded-xl shadow-sm hover:bg-slate-50 transition-all font-bold text-lg text-slate-700">Learn More</a>
+            <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                <a href="https://t.me/Private_Mail_Assistent_Bot" class="bg-blue-600 text-white px-8 py-4 rounded-xl shadow-xl hover:bg-blue-700 transition-all font-bold text-lg w-full sm:w-auto">Start on Telegram</a>
+                <a href="#features" class="bg-white border border-slate-200 px-8 py-4 rounded-xl shadow-sm hover:bg-slate-50 transition-all font-bold text-lg text-slate-700 w-full sm:w-auto">Learn More</a>
             </div>
         </main>
 
         <section id="features" class="py-20 bg-white border-t border-slate-200">
             <div class="max-w-7xl mx-auto px-6">
                 <div class="text-center mb-16">
-                    <h2 class="text-4xl font-bold text-slate-800">How It Works</h2>
+                    <h2 class="text-3xl md:text-4xl font-bold text-slate-800">How It Works</h2>
                     <p class="text-slate-500 mt-4 text-lg">Your personal AI assistant working 24/7 inside Telegram.</p>
                 </div>
                 <div class="grid md:grid-cols-3 gap-10">
@@ -84,11 +85,12 @@ async def admin_login_page(error: str = "", msg: str = ""):
     <html>
     <head>
         <title>Admin Login - MailAgent</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         {FAVICON_SVG}
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
-    <body class="bg-slate-100 flex items-center justify-center min-h-screen font-sans">
-        <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md">
+    <body class="bg-slate-100 flex items-center justify-center min-h-screen font-sans p-4">
+        <div class="bg-white p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md">
             <div class="text-center mb-8">
                 <h1 class="text-3xl font-bold text-slate-800">Admin Portal</h1>
                 <p class="text-slate-500 mt-2 text-sm">Secure access for authorized personnel.</p>
@@ -163,26 +165,26 @@ async def admin_dashboard(request: Request):
         
         if is_user_blocked:
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">BLOCKED</span>'
-            buttons_html = f'<button id="btn-unblock-{u["telegram_id"]}" onclick="unblockUser({u["telegram_id"]}, this.id)" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition-all text-sm">Unblock Access</button>'
+            buttons_html = f'<button id="btn-unblock-{u["telegram_id"]}" onclick="unblockUser({u["telegram_id"]}, this.id)" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition-all text-sm whitespace-nowrap">Unblock</button>'
         elif u.get('is_verified'):
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">APPROVED</span>'
-            buttons_html = f'<button onclick="openBlockModal({u["telegram_id"]})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>'
+            buttons_html = f'<button onclick="openBlockModal({u["telegram_id"]})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm whitespace-nowrap">Block</button>'
         else:
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700">PENDING</span>'
             buttons_html = f'''
-                <button id="btn-app-{u["telegram_id"]}" onclick="approveUser({u['telegram_id']}, this.id)" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition-all text-sm">Approve</button>
-                <button onclick="openBlockModal({u['telegram_id']})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>
+                <button id="btn-app-{u["telegram_id"]}" onclick="approveUser({u['telegram_id']}, this.id)" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition-all text-sm whitespace-nowrap">Approve</button>
+                <button onclick="openBlockModal({u['telegram_id']})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm whitespace-nowrap">Block</button>
             '''
 
         users_html += f'''
         <tr class="user-row border-b border-slate-100 hover:bg-slate-50 transition-all">
-            <td class="p-4">
+            <td class="p-4 min-w-[200px]">
                 <div class="font-bold text-slate-800">{u.get('first_name', 'N/A')}</div>
                 <div class="text-xs text-slate-400">ID: {u['telegram_id']} | @{u.get('username', 'none')}</div>
                 <div class="text-sm text-blue-600 mt-1">{u.get('email', 'Email Not Linked')}</div>
             </td>
             <td class="p-4">{status_html}</td>
-            <td class="p-4 text-sm text-slate-500">{u.get('created_at', '').split('T')[0]}</td>
+            <td class="p-4 text-sm text-slate-500 whitespace-nowrap">{u.get('created_at', '').split('T')[0]}</td>
             <td class="p-4 space-x-2 flex items-center">{buttons_html}</td>
         </tr>
         '''
@@ -193,19 +195,19 @@ async def admin_dashboard(request: Request):
     for b in blocked_records:
         blocklist_html += f'''
         <tr class="border-b border-slate-100">
-            <td class="p-4 font-semibold text-slate-800">{b['block_type'].upper()}: {b['block_value']}</td>
-            <td class="p-4 text-slate-600">{b.get('reason', 'No reason provided')}</td>
-            <td class="p-4"><button onclick="requestRemoveBlock('{b['id']}')" class="text-blue-600 hover:underline font-semibold text-sm">Remove Block</button></td>
+            <td class="p-4 font-semibold text-slate-800 whitespace-nowrap">{b['block_type'].upper()}: {b['block_value']}</td>
+            <td class="p-4 text-slate-600 min-w-[150px]">{b.get('reason', 'No reason provided')}</td>
+            <td class="p-4"><button onclick="requestRemoveBlock('{b['id']}')" class="text-blue-600 hover:underline font-semibold text-sm whitespace-nowrap">Remove Block</button></td>
         </tr>
         '''
     if not blocklist_html:
-        blocklist_html = '<tr><td colspan="3" class="p-4 text-slate-500">No blocked records found.</td></tr>'
+        blocklist_html = '<tr><td colspan="3" class="p-4 text-slate-500 text-center">No blocked records found.</td></tr>'
 
     # --- Generate Admins HTML ---
     admins = get_all_admins()
     admins_html = ""
     for a in admins:
-        remove_btn = f'''<button onclick="requestRemoveAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm">Remove</button>''' if a['email'] != admin_email else '<span class="text-slate-400 text-sm font-bold">Current User</span>'
+        remove_btn = f'''<button onclick="requestRemoveAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm whitespace-nowrap">Remove</button>''' if a['email'] != admin_email else '<span class="text-slate-400 text-sm font-bold whitespace-nowrap">Current User</span>'
         admins_html += f'''
         <tr class="border-b border-slate-100">
             <td class="p-4 font-semibold text-slate-800">{a['email']}</td>
@@ -218,10 +220,10 @@ async def admin_dashboard(request: Request):
     <html>
     <head>
         <title>Dashboard - Admin</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         {FAVICON_SVG}
         <script src="https://cdn.tailwindcss.com"></script>
         <script>
-            // --- System Utilities & Memory ---
             const SPINNER_SVG = `<svg class="animate-spin h-4 w-4 text-current inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
 
             document.addEventListener("DOMContentLoaded", () => {{
@@ -230,8 +232,16 @@ async def admin_dashboard(request: Request):
                 if (element) showSection(activeTab, element);
             }});
 
+            function toggleMobileMenu() {{
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('mobileOverlay');
+                sidebar.classList.toggle('-translate-x-full');
+                overlay.classList.toggle('hidden');
+            }}
+
             function showSection(sectionId, element) {{
                 localStorage.setItem("activeAdminTab", sectionId);
+                
                 document.querySelectorAll('.dashboard-section').forEach(el => el.classList.add('hidden'));
                 document.getElementById(sectionId).classList.remove('hidden');
                 
@@ -240,8 +250,16 @@ async def admin_dashboard(request: Request):
                     el.classList.add('hover:bg-slate-800', 'text-slate-400');
                 }});
                 
-                element.classList.remove('hover:bg-slate-800', 'text-slate-400');
-                element.classList.add('bg-blue-600', 'text-white', 'font-semibold');
+                if(element) {{
+                    element.classList.remove('hover:bg-slate-800', 'text-slate-400');
+                    element.classList.add('bg-blue-600', 'text-white', 'font-semibold');
+                }}
+
+                // Hide menu on mobile after selection
+                if(window.innerWidth < 1024) {{
+                    document.getElementById('sidebar').classList.add('-translate-x-full');
+                    document.getElementById('mobileOverlay').classList.add('hidden');
+                }}
             }}
 
             function filterUsers() {{
@@ -348,7 +366,7 @@ async def admin_dashboard(request: Request):
                 setButtonLoading('btnAddAdmin');
                 let formData = new FormData();
                 formData.append('email', email);
-                formData.append('role', 'admin'); // Hardcoded to admin per requirement
+                formData.append('role', 'admin');
                 
                 try {{
                     let res = await fetch('/admin/add_admin', {{method: 'POST', body: formData}});
@@ -398,7 +416,6 @@ async def admin_dashboard(request: Request):
                 
                 if(data.status === 'ok') {{ 
                     document.getElementById('passForm').reset();
-                    // Reset UI
                     document.getElementById('step2-div').classList.add('hidden');
                     document.getElementById('btnNextPass').classList.remove('hidden');
                     document.getElementById('btnSavePass').classList.add('hidden');
@@ -416,7 +433,7 @@ async def admin_dashboard(request: Request):
     </head>
     <body class="bg-slate-50 min-h-screen font-sans">
         
-        <div id="alertModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
+        <div id="alertModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-[60] p-4 transition-opacity">
             <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm text-center">
                 <h3 id="alertTitle" class="text-xl font-bold mb-2"></h3>
                 <p id="alertMessage" class="text-sm text-slate-600 mb-6"></p>
@@ -424,53 +441,67 @@ async def admin_dashboard(request: Request):
             </div>
         </div>
 
-        <div id="customConfirmModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
+        <div id="customConfirmModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-[60] p-4 transition-opacity">
             <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm text-center">
                 <h3 id="confirmTitle" class="text-xl font-bold text-slate-800 mb-2">Confirm Action</h3>
                 <p id="confirmMessage" class="text-sm text-slate-600 mb-6">Are you sure?</p>
-                <div class="flex justify-center gap-3">
-                    <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 w-full border border-slate-200">Cancel</button>
-                    <button id="btnConfirmAction" onclick="executeConfirm()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md w-full">Confirm</button>
+                <div class="flex flex-col-reverse sm:flex-row justify-center gap-3">
+                    <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 w-full sm:w-auto border border-slate-200">Cancel</button>
+                    <button id="btnConfirmAction" onclick="executeConfirm()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md w-full sm:w-auto">Confirm</button>
                 </div>
             </div>
         </div>
 
-        <div id="blockModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
+        <div id="blockModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-[60] p-4 transition-opacity">
             <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md">
                 <h3 class="text-xl font-bold text-slate-800 mb-2">Block User</h3>
                 <p class="text-sm text-slate-500 mb-4">Please specify the reason for blocking this user.</p>
-                <input type="text" id="blockReason" placeholder="e.g., Spamming, Violation of terms..." class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none mb-6">
-                <div class="flex justify-end gap-3">
-                    <button onclick="closeBlockModal()" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
-                    <button id="btnSubmitBlock" onclick="submitBlock()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md">Confirm Block</button>
+                <input type="text" id="blockReason" placeholder="e.g., Spamming..." class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none mb-6">
+                <div class="flex flex-col-reverse sm:flex-row justify-end gap-3">
+                    <button onclick="closeBlockModal()" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 w-full sm:w-auto border border-slate-200 sm:border-0">Cancel</button>
+                    <button id="btnSubmitBlock" onclick="submitBlock()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md w-full sm:w-auto">Confirm Block</button>
                 </div>
             </div>
         </div>
 
+        <div class="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
+            <div class="text-xl font-bold flex items-center gap-2"><span>📧</span> Admin Panel</div>
+            <button onclick="toggleMobileMenu()" class="p-2 bg-slate-800 rounded-lg focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+        </div>
+
+        <div id="mobileOverlay" onclick="toggleMobileMenu()" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"></div>
+
         <div class="flex">
-            <div class="w-64 bg-slate-900 text-white min-h-screen p-6 hidden lg:block">
-                <div class="text-2xl font-bold mb-10 flex items-center gap-2"><span>📧</span> Admin Panel</div>
+            <div id="sidebar" class="fixed inset-y-0 left-0 transform -translate-x-full lg:relative lg:translate-x-0 transition duration-200 ease-in-out z-50 w-64 bg-slate-900 text-white min-h-screen p-6 overflow-y-auto">
+                <div class="text-2xl font-bold mb-10 hidden lg:flex items-center gap-2"><span>📧</span> Admin Panel</div>
+                <div class="flex justify-between items-center lg:hidden mb-8">
+                    <span class="text-xl font-bold">Menu</span>
+                    <button onclick="toggleMobileMenu()" class="text-slate-400 hover:text-white">✕</button>
+                </div>
+                
                 <nav class="space-y-2">
-                    <a href="#" onclick="showSection('users-section', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">User Management</a>
+                    <a href="#" onclick="showSection('users-section', this)" class="nav-link block p-3 bg-blue-600 text-white font-semibold rounded-lg transition-all">User Management</a>
                     <a href="#" onclick="showSection('blocklist-section', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">Blocklist</a>
                     {manage_admins_tab}
                     <a href="#" onclick="showSection('set-password-section', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">Set Password</a>
-                    <div class="pt-10">
+                    <div class="pt-8 border-t border-slate-800 mt-8">
                         <a href="/admin/logout" class="block p-3 text-red-400 hover:text-red-300 hover:bg-slate-800 rounded-lg transition-all">Logout</a>
                     </div>
                 </nav>
             </div>
 
-            <div class="flex-1 p-10">
+            <div class="flex-1 p-4 md:p-10 w-full overflow-hidden">
+                
                 <div id="users-section" class="dashboard-section hidden">
-                    <div class="flex justify-between items-center mb-10">
-                        <h1 class="text-3xl font-bold text-slate-800">User Management</h1>
-                        <div class="flex gap-4">
-                            <input type="text" id="searchInput" onkeyup="filterUsers()" placeholder="Search Users..." class="p-3 border border-slate-300 rounded-xl w-80 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        </div>
+                    <div class="flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4">
+                        <h1 class="text-2xl md:text-3xl font-bold text-slate-800">User Management</h1>
+                        <input type="text" id="searchInput" onkeyup="filterUsers()" placeholder="Search Users..." class="p-3 border border-slate-300 rounded-xl w-full md:w-80 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <table class="w-full text-left">
+                    
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                        <table class="w-full text-left min-w-[600px]">
                             <thead class="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th class="p-4 text-sm font-semibold text-slate-600">Telegram User</th>
@@ -487,9 +518,9 @@ async def admin_dashboard(request: Request):
                 </div>
 
                 <div id="blocklist-section" class="dashboard-section hidden">
-                    <h1 class="text-3xl font-bold text-slate-800 mb-6">System Blocklist</h1>
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <table class="w-full text-left">
+                    <h1 class="text-2xl md:text-3xl font-bold text-slate-800 mb-6">System Blocklist</h1>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                        <table class="w-full text-left min-w-[500px]">
                             <thead class="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th class="p-4 text-sm font-semibold text-slate-600">Target</th>
@@ -505,21 +536,21 @@ async def admin_dashboard(request: Request):
                 </div>
 
                 <div id="manage-admins-section" class="dashboard-section hidden">
-                    <h1 class="text-3xl font-bold text-slate-800 mb-6">Manage Administrators</h1>
+                    <h1 class="text-2xl md:text-3xl font-bold text-slate-800 mb-6">Manage Administrators</h1>
                     
-                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
+                    <div class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
                         <h2 class="text-lg font-bold text-slate-800 mb-4">Add New Admin</h2>
-                        <form onsubmit="submitNewAdmin(event)" class="flex gap-4 items-end">
+                        <form onsubmit="submitNewAdmin(event)" class="flex flex-col sm:flex-row gap-4 sm:items-end">
                             <div class="flex-1">
                                 <label class="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                                 <input type="email" id="newAdminEmail" required placeholder="newadmin@example.com" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
-                            <button type="submit" id="btnAddAdmin" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 h-[50px] shadow-sm">Add Admin</button>
+                            <button type="submit" id="btnAddAdmin" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 h-[50px] shadow-sm w-full sm:w-auto">Add Admin</button>
                         </form>
                     </div>
 
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <table class="w-full text-left">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                        <table class="w-full text-left min-w-[400px]">
                             <thead class="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th class="p-4 text-sm font-semibold text-slate-600">Email Address</th>
@@ -535,9 +566,9 @@ async def admin_dashboard(request: Request):
                 </div>
 
                 <div id="set-password-section" class="dashboard-section hidden">
-                    <h1 class="text-3xl font-bold text-slate-800 mb-6">Set Admin Password</h1>
-                    <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-lg">
-                        <p class="text-slate-500 mb-6">Create a password to login directly without using Google SSO.</p>
+                    <h1 class="text-2xl md:text-3xl font-bold text-slate-800 mb-6">Set Admin Password</h1>
+                    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 max-w-lg">
+                        <p class="text-slate-500 mb-6 text-sm md:text-base">Create a password to login directly without using Google SSO.</p>
                         
                         <form id="passForm" class="space-y-4">
                             <div>
@@ -570,25 +601,30 @@ async def success_page(msg: str, success: bool = True, is_admin_error: bool = Fa
     color = "green" if success else "red"
     icon = "✅" if success else "❌"
     
+    # Smarter Logic to determine if it's a CSRF/Session error vs General Admin Error
     if is_admin_error:
-        action_button = '<a href="/admin/login" class="bg-red-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-red-700 transition-colors">Retry Admin Login</a>'
+        action_button = '<a href="/admin/login" class="bg-red-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-red-700 transition-colors mb-3">Retry Admin Login</a>'
         desc_text = "Please retry with an authorized administrator email address."
+    elif "Session expired" in msg or "CSRF" in msg:
+        action_button = '<a href="/" class="bg-slate-800 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-slate-900 transition-colors mb-3">Return to Home Page</a>'
+        desc_text = "Security timeout due to mode change or inactivity. Please start again."
     else:
-        action_button = '<a href="https://t.me/Private_Mail_Assistent_Bot" class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-blue-700 transition-colors">Open Telegram</a>'
+        action_button = '<a href="https://t.me/Private_Mail_Assistent_Bot" class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-blue-700 transition-colors mb-3">Open Telegram</a>'
         desc_text = "You may now close this page and return to the bot."
 
     return f"""
     <html>
     <head>
         <title>Authentication Status</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         {FAVICON_SVG}
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
-    <body class="bg-slate-100 flex items-center justify-center min-h-screen font-sans">
-        <div class="bg-white p-10 rounded-2xl shadow-xl text-center max-w-sm w-full border-b-8 border-{color}-500">
+    <body class="bg-slate-100 flex items-center justify-center min-h-screen font-sans p-4">
+        <div class="bg-white p-8 md:p-10 rounded-2xl shadow-xl text-center max-w-sm w-full border-b-8 border-{color}-500">
             <div class="text-5xl mb-6">{icon}</div>
-            <h2 class="text-2xl font-bold text-slate-800 mb-2">{msg}</h2>
-            <p class="text-slate-500 mb-8">{desc_text}</p>
+            <h2 class="text-xl md:text-2xl font-bold text-slate-800 mb-2">{msg}</h2>
+            <p class="text-sm md:text-base text-slate-500 mb-8">{desc_text}</p>
             {action_button}
         </div>
     </body>
