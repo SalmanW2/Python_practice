@@ -24,35 +24,8 @@ async def landing_page():
             body {{ font-family: 'Inter', sans-serif; scroll-behavior: smooth; }}
             .bg-grid {{ background-size: 40px 40px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px); }}
         </style>
-        <script>
-            function openTelegramModal() {{
-                document.getElementById('tgModal').classList.remove('hidden');
-            }}
-            function closeTelegramModal() {{
-                document.getElementById('tgModal').classList.add('hidden');
-            }}
-        </script>
     </head>
     <body class="bg-slate-50 text-slate-900 bg-grid relative overflow-x-hidden">
-        
-        <div id="tgModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
-            <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg text-center relative">
-                <button onclick="closeTelegramModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
-                <div class="text-6xl mb-4">🤖</div>
-                <h3 class="text-2xl font-extrabold text-slate-800 mb-2">Connect to Your Assistant</h3>
-                <p class="text-slate-600 mb-8">Choose how you want to launch the bot. If you are on a desktop without the app, use the Web version!</p>
-                
-                <div class="space-y-4">
-                    <a href="https://t.me/Private_Mail_Assistent_Bot" target="_blank" class="flex items-center justify-center gap-3 w-full bg-blue-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-md hover:shadow-lg">
-                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16l-1.92 9c-.14.62-.5.76-1.02.47l-2.83-2.09-1.36 1.32c-.15.15-.28.28-.58.28l.2-2.89 5.26-4.76c.23-.21-.05-.32-.36-.12l-6.5 4.09-2.8-.88c-.61-.19-.62-.61.13-.9l10.94-4.22c.51-.19.95.12.8.7z"/></svg>
-                        Open Telegram App
-                    </a>
-                    <a href="https://web.telegram.org/k/#@Private_Mail_Assistent_Bot" target="_blank" class="flex items-center justify-center gap-3 w-full bg-slate-100 text-slate-700 border border-slate-300 px-6 py-4 rounded-xl font-bold hover:bg-slate-200 transition-all">
-                        🌐 Open in Telegram Web
-                    </a>
-                </div>
-            </div>
-        </div>
 
         <nav class="p-6 flex justify-between items-center max-w-7xl mx-auto">
             <div class="text-xl md:text-2xl font-extrabold text-blue-600 flex items-center gap-2 tracking-tight">
@@ -74,9 +47,9 @@ async def landing_page():
             </p>
             
             <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto z-10">
-                <button onclick="openTelegramModal()" class="bg-blue-600 text-white px-10 py-4 rounded-2xl shadow-xl hover:bg-blue-700 hover:-translate-y-1 transition-all font-bold text-lg w-full sm:w-auto flex justify-center items-center gap-2">
+                <a href="https://t.me/Private_Mail_Assistent_Bot" target="_blank" class="bg-blue-600 text-white px-10 py-4 rounded-2xl shadow-xl hover:bg-blue-700 hover:-translate-y-1 transition-all font-bold text-lg w-full sm:w-auto flex justify-center items-center gap-2">
                     Start on Telegram 🚀
-                </button>
+                </a>
                 <a href="#features" class="bg-white border border-slate-200 px-10 py-4 rounded-2xl shadow-sm hover:bg-slate-50 hover:-translate-y-1 transition-all font-bold text-lg text-slate-700 w-full sm:w-auto flex justify-center items-center">
                     See How It Works
                 </a>
@@ -120,9 +93,9 @@ async def landing_page():
 
         <footer class="bg-slate-900 text-white py-16 text-center">
             <h2 class="text-3xl font-bold mb-6">Ready to regain your time?</h2>
-            <button onclick="openTelegramModal()" class="bg-blue-600 hover:bg-blue-500 text-white px-10 py-4 rounded-full font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-1">
+            <a href="https://t.me/Private_Mail_Assistent_Bot" target="_blank" class="inline-block bg-blue-600 hover:bg-blue-500 text-white px-10 py-4 rounded-full font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-1">
                 Link Your Inbox Now
-            </button>
+            </a>
         </footer>
     </body>
     </html>
@@ -177,7 +150,7 @@ async def admin_login_page(error: str = "", msg: str = ""):
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1 text-left">Password</label>
-                    <input type="password" name="password" required maxlength="72" class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="password" name="password" required class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <button type="submit" class="w-full bg-slate-900 text-white p-3 rounded-lg font-bold hover:bg-slate-800 transition-all shadow-md">Login to Dashboard</button>
             </form>
@@ -212,7 +185,6 @@ async def admin_dashboard(request: Request):
     if role == "super_admin":
         manage_admins_tab = f'<a href="#" onclick="showSection(\'manage-admins-section\', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">Manage Admins</a>'
 
-    # --- Generate Users HTML ---
     users = get_all_users()
     users_html = ""
     for u in users:
@@ -244,7 +216,6 @@ async def admin_dashboard(request: Request):
         </tr>
         '''
 
-    # --- Generate Blocklist HTML ---
     blocked_records = get_all_blocked()
     blocklist_html = ""
     for b in blocked_records:
@@ -258,7 +229,6 @@ async def admin_dashboard(request: Request):
     if not blocklist_html:
         blocklist_html = '<tr><td colspan="3" class="p-4 text-slate-500 text-center">No blocked records found.</td></tr>'
 
-    # --- Generate Admins HTML ---
     admins = get_all_admins()
     admins_html = ""
     for a in admins:
@@ -334,7 +304,6 @@ async def admin_dashboard(request: Request):
                 }}
             }}
 
-            // --- Custom Modal System ---
             let confirmActionCallback = null;
 
             function openAlert(title, message, isError = false) {{
@@ -365,7 +334,6 @@ async def admin_dashboard(request: Request):
                 if (confirmActionCallback) await confirmActionCallback();
             }}
 
-            // --- API Action Functions ---
             let currentBlockId = null;
 
             function openBlockModal(tg_id) {{
@@ -440,7 +408,7 @@ async def admin_dashboard(request: Request):
                 }}
             }}
 
-            // --- SMART Password Logic ---
+            // --- STRICT Password Logic (6-10 chars) ---
             async function handlePassSubmit(event) {{
                 event.preventDefault(); 
                 
@@ -451,8 +419,8 @@ async def admin_dashboard(request: Request):
 
                 if (step2.classList.contains('hidden')) {{
                     // Step 1: Validating New Password
-                    if (p1.length < 6) {{
-                        errDiv.innerText = "Password must be at least 6 characters.";
+                    if (p1.length < 6 || p1.length > 10) {{
+                        errDiv.innerText = "Password must be between 6 and 10 characters long.";
                         errDiv.classList.remove('hidden');
                     }} else {{
                         errDiv.classList.add('hidden');
@@ -654,14 +622,14 @@ async def admin_dashboard(request: Request):
                         <form id="passForm" onsubmit="handlePassSubmit(event)" class="space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">New Password</label>
-                                <input type="password" id="newPass" required placeholder="Minimum 6 characters" maxlength="72" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="password" id="newPass" required placeholder="6 to 10 characters" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             
                             <div id="passErrorInline" class="text-red-500 text-sm font-semibold hidden"></div>
 
                             <div id="step2-div" class="hidden">
                                 <label class="block text-sm font-medium text-slate-700 mb-1 mt-2">Confirm Password</label>
-                                <input type="password" id="confPass" placeholder="Retype your password" maxlength="72" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="password" id="confPass" placeholder="Retype your password" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             
                             <button type="submit" id="btnActionPass" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-slate-900 shadow-md w-full transition-all">Next</button>

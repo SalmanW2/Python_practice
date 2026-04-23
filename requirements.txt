@@ -4,7 +4,5 @@ uvicorn
 supabase
 google-auth-oauthlib
 google-api-python-client
-passlib
-bcrypt
 python-multipart
 httpx
