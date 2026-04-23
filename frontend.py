@@ -132,7 +132,6 @@ async def admin_login_page(error: str = "", msg: str = ""):
 
 @frontend_router.post("/admin/login_with_password")
 async def login_with_password(response: Response, email: str = Form(...), password: str = Form(...)):
-    """Handles manual password login for admins."""
     if verify_admin_password(email, password):
         response = RedirectResponse(url="/admin/dashboard", status_code=302)
         response.set_cookie(key="admin_session", value=email, max_age=86400)
@@ -279,6 +278,7 @@ async def admin_dashboard(request: Request):
                 }}
             }}
 
+            // --- Custom Modal System ---
             let confirmActionCallback = null;
 
             function openAlert(title, message, isError = false) {{
@@ -309,6 +309,7 @@ async def admin_dashboard(request: Request):
                 if (confirmActionCallback) await confirmActionCallback();
             }}
 
+            // --- API Action Functions ---
             let currentBlockId = null;
 
             function openBlockModal(tg_id) {{
@@ -326,32 +327,32 @@ async def admin_dashboard(request: Request):
                 let reason = document.getElementById('blockReason').value;
                 if (!reason) {{ openAlert("Error", "Please provide a reason for blocking.", true); return; }}
                 setButtonLoading('btnSubmitBlock');
-                await fetch(`/admin/update/${{currentBlockId}}/blocked?reason=${{encodeURIComponent(reason)}}`, {{method: 'POST'}});
+                await fetch(`/admin/update/${{currentBlockId}}/blocked?reason=${{encodeURIComponent(reason)}}`, {{method: 'POST', credentials: 'same-origin'}});
                 location.reload();
             }}
 
             async function approveUser(tg_id, btnId) {{
                 setButtonLoading(btnId);
-                await fetch(`/admin/update/${{tg_id}}/approved`, {{method: 'POST'}});
+                await fetch(`/admin/update/${{tg_id}}/approved`, {{method: 'POST', credentials: 'same-origin'}});
                 location.reload();
             }}
 
             async function unblockUser(tg_id, btnId) {{
                 setButtonLoading(btnId);
-                await fetch(`/admin/update/${{tg_id}}/pending`, {{method: 'POST'}});
+                await fetch(`/admin/update/${{tg_id}}/pending`, {{method: 'POST', credentials: 'same-origin'}});
                 location.reload();
             }}
 
             function requestRemoveBlock(recordId) {{
                 openConfirmModal("Remove Block", "Are you sure you want to remove this block? The user will be returned to Pending status.", async () => {{
-                    await fetch(`/admin/remove_block/${{recordId}}`, {{method: 'POST'}});
+                    await fetch(`/admin/remove_block/${{recordId}}`, {{method: 'POST', credentials: 'same-origin'}});
                     location.reload();
                 }});
             }}
 
             function requestRemoveAdmin(adminId) {{
                 openConfirmModal("Remove Admin", "Are you sure you want to revoke this user's administrator privileges?", async () => {{
-                    await fetch(`/admin/remove_admin/${{adminId}}`, {{method: 'POST'}});
+                    await fetch(`/admin/remove_admin/${{adminId}}`, {{method: 'POST', credentials: 'same-origin'}});
                     location.reload();
                 }});
             }}
@@ -359,16 +360,20 @@ async def admin_dashboard(request: Request):
             async function submitNewAdmin(event) {{
                 event.preventDefault();
                 let email = document.getElementById('newAdminEmail').value;
-                
                 setButtonLoading('btnAddAdmin');
+                
                 let formData = new FormData();
                 formData.append('email', email);
                 formData.append('role', 'admin');
                 
                 try {{
-                    let res = await fetch('/admin/add_admin', {{method: 'POST', body: formData}});
-                    if(res.ok) location.reload();
-                    else openAlert("Error", "Failed to add administrator. Ensure you are a Super Admin.", true);
+                    let res = await fetch('/admin/add_admin', {{method: 'POST', body: formData, credentials: 'same-origin'}});
+                    let data = await res.json();
+                    if(data.status === 'ok') {{
+                        location.reload();
+                    }} else {{
+                        openAlert("Error", data.message || "Failed to add administrator.", true);
+                    }}
                 }} catch (e) {{
                     openAlert("Error", "Network error occurred.", true);
                 }} finally {{
@@ -379,64 +384,74 @@ async def admin_dashboard(request: Request):
                 }}
             }}
 
-            function nextPasswordStep(event) {{
-                event.preventDefault();
+            // --- SMART Password Logic (Fixes Enter Key Issue) ---
+            async function handlePassSubmit(event) {{
+                event.preventDefault(); // Prevents default form submission
+                
+                let step2 = document.getElementById('step2-div');
                 let p1 = document.getElementById('newPass').value;
                 let errDiv = document.getElementById('passErrorInline');
-                
-                if (p1.length < 6) {{
-                    errDiv.innerText = "Password must be at least 6 characters.";
-                    errDiv.classList.remove('hidden');
-                }} else {{
-                    errDiv.classList.add('hidden');
-                    document.getElementById('step2-div').classList.remove('hidden');
-                    document.getElementById('btnNextPass').classList.add('hidden');
-                    document.getElementById('btnSavePass').classList.remove('hidden');
-                }}
-            }}
+                let btn = document.getElementById('btnActionPass');
 
-            async function savePassword(event) {{
-                event.preventDefault();
-                let p1 = document.getElementById('newPass').value;
-                let p2 = document.getElementById('confPass').value;
-                let errDiv = document.getElementById('passErrorInline');
-                let btn = document.getElementById('btnSavePass');
-                
-                if(p1 !== p2) {{ 
-                    errDiv.innerText = "Passwords do not match!"; 
-                    errDiv.classList.remove('hidden'); 
-                    return; 
-                }}
-                
-                errDiv.classList.add('hidden');
-                setButtonLoading('btnSavePass');
-                
-                let formData = new FormData();
-                formData.append('password', p1);
-                
-                try {{
-                    let res = await fetch('/admin/set_password', {{method: 'POST', body: formData}});
-                    if (!res.ok) throw new Error("Server Error");
-                    
-                    let data = await res.json();
-                    
-                    if(data.status === 'ok') {{ 
-                        document.getElementById('passForm').reset();
-                        document.getElementById('step2-div').classList.add('hidden');
-                        document.getElementById('btnNextPass').classList.remove('hidden');
-                        btn.classList.add('hidden');
-                        
-                        openAlert("Success", "Your new password has been saved securely.");
+                if (step2.classList.contains('hidden')) {{
+                    // User is on Step 1: Validating New Password
+                    if (p1.length < 6) {{
+                        errDiv.innerText = "Password must be at least 6 characters.";
+                        errDiv.classList.remove('hidden');
                     }} else {{
-                        openAlert("Error", "Failed to save password. Session may have expired.", true);
+                        errDiv.classList.add('hidden');
+                        step2.classList.remove('hidden');
+                        btn.innerText = "Save Password";
+                        document.getElementById('confPass').required = true;
+                        document.getElementById('confPass').focus();
                     }}
-                }} catch (error) {{
-                    openAlert("Error", "A database or network error occurred while saving.", true);
-                }} finally {{
-                    // Reset Button State Always!
-                    btn.innerHTML = 'Save Password';
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                }} else {{
+                    // User is on Step 2: Saving Password
+                    let p2 = document.getElementById('confPass').value;
+                    if(p1 !== p2) {{ 
+                        errDiv.innerText = "Passwords do not match!"; 
+                        errDiv.classList.remove('hidden'); 
+                        return; 
+                    }}
+                    
+                    errDiv.classList.add('hidden');
+                    setButtonLoading('btnActionPass');
+                    
+                    let formData = new FormData();
+                    formData.append('password', p1);
+                    
+                    try {{
+                        let res = await fetch('/admin/set_password', {{
+                            method: 'POST', 
+                            body: formData, 
+                            credentials: 'same-origin'
+                        }});
+                        
+                        if (!res.ok) throw new Error("Server communication failed.");
+                        
+                        let data = await res.json();
+                        
+                        if(data.status === 'ok') {{ 
+                            document.getElementById('passForm').reset();
+                            step2.classList.add('hidden');
+                            btn.innerHTML = 'Next';
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                            document.getElementById('confPass').required = false;
+                            
+                            openAlert("Success", "Your new password has been saved securely.");
+                        }} else {{
+                            openAlert("Error", data.message || "Failed to save password.", true);
+                        }}
+                    }} catch (error) {{
+                        openAlert("Error", "A network or database error occurred while saving.", true);
+                    }} finally {{
+                        if (btn.disabled) {{ // Reset button state if it failed
+                            btn.innerHTML = 'Save Password';
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                        }}
+                    }}
                 }}
             }}
         </script>
@@ -580,7 +595,7 @@ async def admin_dashboard(request: Request):
                     <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 max-w-lg">
                         <p class="text-slate-500 mb-6 text-sm md:text-base">Create a password to login directly without using Google SSO.</p>
                         
-                        <form id="passForm" class="space-y-4">
+                        <form id="passForm" onsubmit="handlePassSubmit(event)" class="space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">New Password</label>
                                 <input type="password" id="newPass" required placeholder="Minimum 6 characters" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
@@ -593,8 +608,7 @@ async def admin_dashboard(request: Request):
                                 <input type="password" id="confPass" placeholder="Retype your password" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             
-                            <button type="button" id="btnNextPass" onclick="nextPasswordStep(event)" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-slate-900 shadow-md w-full">Next</button>
-                            <button type="submit" id="btnSavePass" onclick="savePassword(event)" class="hidden bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md w-full">Save Password</button>
+                            <button type="submit" id="btnActionPass" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-slate-900 shadow-md w-full">Next</button>
                         </form>
                     </div>
                 </div>
@@ -661,16 +675,22 @@ async def api_set_password(request: Request, password: str = Form(...)):
             return {"status": "ok"}
         except Exception as e:
             logging.error(f"Set Password Error: {e}")
-            return {"status": "error"}
-    return {"status": "error"}
+            # Be exact about the error now so we don't guess
+            return {"status": "error", "message": f"Database Error: {str(e)}"}
+    return {"status": "error", "message": "Cookie missing. Please log in again."}
 
 @frontend_router.post("/admin/add_admin")
 async def api_add_admin(request: Request, email: str = Form(...), role: str = Form(...)):
     admin_email = request.cookies.get("admin_session")
-    if get_admin_role(admin_email) == "super_admin":
-        add_new_admin(email, role, admin_email)
-        return {"status": "ok"}
-    return Response(status_code=403)
+    if not admin_email:
+        return {"status": "error", "message": "Authentication cookie missing. Please log in again."}
+    try:
+        if get_admin_role(admin_email) == "super_admin":
+            add_new_admin(email, role, admin_email)
+            return {"status": "ok"}
+        return {"status": "error", "message": "You are not authorized as a Super Admin."}
+    except Exception as e:
+        return {"status": "error", "message": f"Database Error: {str(e)}"}
 
 @frontend_router.post("/admin/remove_admin/{admin_id}")
 async def api_remove_admin(request: Request, admin_id: str):
@@ -682,7 +702,6 @@ async def api_remove_admin(request: Request, admin_id: str):
 
 @frontend_router.get("/admin/logout")
 async def admin_logout(response: Response):
-    # Logs the admin out and sends them to the login page with a success message
     response = RedirectResponse(url="/admin/login?msg=Logged out successfully")
     response.delete_cookie("admin_session")
     return response
