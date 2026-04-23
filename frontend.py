@@ -205,7 +205,7 @@ async def admin_dashboard(request: Request):
     admins = get_all_admins()
     admins_html = ""
     for a in admins:
-        remove_btn = f'<button onclick="removeAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm">Remove</button>' if a['email'] != admin_email else '<span class="text-slate-400 text-sm">Current User</span>'
+        remove_btn = f'''<button onclick="removeAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm">Remove</button>''' if a['email'] != admin_email else '<span class="text-slate-400 text-sm">Current User</span>'
         admins_html += f'''
         <tr class="border-b border-slate-100">
             <td class="p-4 font-semibold text-slate-800">{a['email']}</td>
