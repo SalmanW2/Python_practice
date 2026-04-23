@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Request, Form, Depends, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from database import get_all_users, update_user_status, is_blocked, verify_admin_password, set_admin_password, get_admin_role
+from database import (get_all_users, update_user_status, is_blocked, verify_admin_password, 
+                      set_admin_password, get_admin_role, get_all_admins, add_new_admin, 
+                      remove_admin, get_all_blocked, remove_blocked_record)
 from auth import get_admin_login_url
 import logging
 
 frontend_router = APIRouter()
-
 FAVICON_SVG = '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📧</text></svg>">'
 
 # --- 1. Public Landing Page ---
@@ -72,8 +73,13 @@ async def landing_page():
 
 # --- 2. Admin Login Page ---
 @frontend_router.get("/admin/login", response_class=HTMLResponse)
-async def admin_login_page(error: str = ""):
-    error_html = f'<div class="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm font-semibold">{error}</div>' if error else ""
+async def admin_login_page(error: str = "", msg: str = ""):
+    alert_html = ""
+    if error:
+        alert_html = f'<div class="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm font-semibold">{error}</div>'
+    elif msg:
+        alert_html = f'<div class="bg-green-100 text-green-700 p-3 rounded-lg mb-4 text-sm font-semibold">{msg}</div>'
+
     return f"""
     <html>
     <head>
@@ -88,7 +94,7 @@ async def admin_login_page(error: str = ""):
                 <p class="text-slate-500 mt-2 text-sm">Secure access for authorized personnel.</p>
             </div>
             
-            {error_html}
+            {alert_html}
 
             <div class="text-center mb-6">
                 <button onclick="window.location.href='/admin/auth/google'" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 p-3 rounded-lg hover:bg-slate-50 transition-all shadow-sm">
@@ -104,7 +110,7 @@ async def admin_login_page(error: str = ""):
             </div>
 
             <div class="text-center mb-4">
-                <p class="text-xs text-slate-500 mb-3 px-2">If you have already set up your admin password, login below:</p>
+                <p class="text-xs text-slate-500 mb-3 px-2">If you have configured a password, login below:</p>
             </div>
             <form action="/admin/login_with_password" method="POST" class="space-y-4">
                 <div>
@@ -144,24 +150,29 @@ async def admin_dashboard(request: Request):
     if not admin_email:
         return RedirectResponse(url="/admin/login")
 
-    # Get admin role to hide/show 'Manage Admins'
     role = get_admin_role(admin_email)
     manage_admins_tab = ""
     if role == "super_admin":
         manage_admins_tab = f'<a href="#" onclick="showSection(\'manage-admins-section\', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">Manage Admins</a>'
 
+    # --- Generate Users HTML ---
     users = get_all_users()
-    
-    # HTML GENERATION FOR USERS
     users_html = ""
     for u in users:
-        # Determine specific status display
-        if is_blocked("telegram", str(u['telegram_id'])):
+        is_user_blocked = is_blocked("telegram", str(u['telegram_id']))
+        
+        if is_user_blocked:
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">BLOCKED</span>'
+            buttons_html = f'<button onclick="unblockUser({u["telegram_id"]})" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition-all text-sm">Unblock Access</button>'
         elif u.get('is_verified'):
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">APPROVED</span>'
+            buttons_html = f'<button onclick="openBlockModal({u["telegram_id"]})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>'
         else:
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700">PENDING</span>'
+            buttons_html = f'''
+                <button onclick="approveUser({u['telegram_id']})" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition-all text-sm">Approve</button>
+                <button onclick="openBlockModal({u['telegram_id']})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>
+            '''
 
         users_html += f'''
         <tr class="user-row border-b border-slate-100 hover:bg-slate-50 transition-all">
@@ -172,10 +183,34 @@ async def admin_dashboard(request: Request):
             </td>
             <td class="p-4">{status_html}</td>
             <td class="p-4 text-sm text-slate-500">{u.get('created_at', '').split('T')[0]}</td>
-            <td class="p-4 space-x-2">
-                <button onclick="approveUser({u['telegram_id']})" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition-all text-sm">Approve</button>
-                <button onclick="openBlockModal({u['telegram_id']})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>
-            </td>
+            <td class="p-4 space-x-2">{buttons_html}</td>
+        </tr>
+        '''
+
+    # --- Generate Blocklist HTML ---
+    blocked_records = get_all_blocked()
+    blocklist_html = ""
+    for b in blocked_records:
+        blocklist_html += f'''
+        <tr class="border-b border-slate-100">
+            <td class="p-4 font-semibold text-slate-800">{b['block_type'].upper()}: {b['block_value']}</td>
+            <td class="p-4 text-slate-600">{b.get('reason', 'No reason provided')}</td>
+            <td class="p-4"><button onclick="removeBlockRecord('{b['id']}')" class="text-blue-600 hover:underline font-semibold text-sm">Remove Block</button></td>
+        </tr>
+        '''
+    if not blocklist_html:
+        blocklist_html = '<tr><td colspan="3" class="p-4 text-slate-500">No blocked records found.</td></tr>'
+
+    # --- Generate Admins HTML ---
+    admins = get_all_admins()
+    admins_html = ""
+    for a in admins:
+        remove_btn = f'<button onclick="removeAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm">Remove</button>' if a['email'] != admin_email else '<span class="text-slate-400 text-sm">Current User</span>'
+        admins_html += f'''
+        <tr class="border-b border-slate-100">
+            <td class="p-4 font-semibold text-slate-800">{a['email']}</td>
+            <td class="p-4 text-slate-600 capitalize">{a['role'].replace('_', ' ')}</td>
+            <td class="p-4">{remove_btn}</td>
         </tr>
         '''
 
@@ -208,6 +243,7 @@ async def admin_dashboard(request: Request):
                 }});
             }}
 
+            // --- Modal & User Actions ---
             let currentBlockId = null;
 
             function openBlockModal(tg_id) {{
@@ -223,10 +259,7 @@ async def admin_dashboard(request: Request):
 
             async function submitBlock() {{
                 let reason = document.getElementById('blockReason').value;
-                if (!reason) {{
-                    alert("Please provide a reason for blocking.");
-                    return;
-                }}
+                if (!reason) {{ alert("Please provide a reason for blocking."); return; }}
                 await fetch(`/admin/update/${{currentBlockId}}/blocked?reason=${{encodeURIComponent(reason)}}`, {{method: 'POST'}});
                 location.reload();
             }}
@@ -236,18 +269,61 @@ async def admin_dashboard(request: Request):
                 location.reload();
             }}
 
+            async function unblockUser(tg_id) {{
+                await fetch(`/admin/update/${{tg_id}}/pending`, {{method: 'POST'}});
+                location.reload();
+            }}
+
+            // --- Blocklist Actions ---
+            async function removeBlockRecord(recordId) {{
+                if(confirm("Are you sure you want to remove this block?")) {{
+                    await fetch(`/admin/remove_block/${{recordId}}`, {{method: 'POST'}});
+                    location.reload();
+                }}
+            }}
+
+            // --- Password Action ---
             async function savePassword(event) {{
                 event.preventDefault();
                 let p1 = document.getElementById('newPass').value;
                 let p2 = document.getElementById('confPass').value;
-                if(p1 !== p2) {{ alert("Passwords do not match!"); return; }}
+                let errDiv = document.getElementById('passError');
                 
+                if(p1.length < 6) {{ errDiv.innerText = "Password must be at least 6 characters."; errDiv.classList.remove('hidden'); return; }}
+                if(p1 !== p2) {{ errDiv.innerText = "Passwords do not match!"; errDiv.classList.remove('hidden'); return; }}
+                
+                errDiv.classList.add('hidden');
                 let formData = new FormData();
                 formData.append('password', p1);
                 
                 let res = await fetch('/admin/set_password', {{method: 'POST', body: formData}});
                 let data = await res.json();
-                if(data.status === 'ok') {{ alert("Password saved successfully!"); document.getElementById('passForm').reset(); }}
+                if(data.status === 'ok') {{ 
+                    alert("Password saved successfully!"); 
+                    document.getElementById('passForm').reset(); 
+                }}
+            }}
+
+            // --- Admin Management Actions ---
+            async function submitNewAdmin(event) {{
+                event.preventDefault();
+                let email = document.getElementById('newAdminEmail').value;
+                let role = document.getElementById('newAdminRole').value;
+                
+                let formData = new FormData();
+                formData.append('email', email);
+                formData.append('role', role);
+                
+                let res = await fetch('/admin/add_admin', {{method: 'POST', body: formData}});
+                if(res.ok) location.reload();
+                else alert("Error adding administrator.");
+            }}
+
+            async function removeAdmin(adminId) {{
+                if(confirm("Remove this administrator?")) {{
+                    await fetch(`/admin/remove_admin/${{adminId}}`, {{method: 'POST'}});
+                    location.reload();
+                }}
             }}
         </script>
     </head>
@@ -280,6 +356,7 @@ async def admin_dashboard(request: Request):
             </div>
 
             <div class="flex-1 p-10">
+                
                 <div id="users-section" class="dashboard-section">
                     <div class="flex justify-between items-center mb-10">
                         <h1 class="text-3xl font-bold text-slate-800">User Management</h1>
@@ -306,18 +383,56 @@ async def admin_dashboard(request: Request):
 
                 <div id="blocklist-section" class="dashboard-section hidden">
                     <h1 class="text-3xl font-bold text-slate-800 mb-6">System Blocklist</h1>
-                    <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <p class="text-slate-500">This section will display all blocked IDs and Emails.</p>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4 text-sm font-semibold text-slate-600">Target</th>
+                                    <th class="p-4 text-sm font-semibold text-slate-600">Reason</th>
+                                    <th class="p-4 text-sm font-semibold text-slate-600">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {blocklist_html}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
                 <div id="manage-admins-section" class="dashboard-section hidden">
                     <h1 class="text-3xl font-bold text-slate-800 mb-6">Manage Administrators</h1>
-                    <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg mb-6">
-                        <strong>Note:</strong> Only Super Admins can add or remove other administrators.
+                    
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
+                        <h2 class="text-lg font-bold text-slate-800 mb-4">Add New Admin</h2>
+                        <form onsubmit="submitNewAdmin(event)" class="flex gap-4 items-end">
+                            <div class="flex-1">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+                                <input type="email" id="newAdminEmail" required class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="w-64">
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                                <select id="newAdminRole" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                                    <option value="admin">Admin</option>
+                                    <option value="super_admin">Super Admin</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 h-[50px]">Add User</button>
+                        </form>
                     </div>
-                    <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <p class="text-slate-500">Admin management tools will appear here.</p>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th class="p-4 text-sm font-semibold text-slate-600">Email Address</th>
+                                    <th class="p-4 text-sm font-semibold text-slate-600">Role</th>
+                                    <th class="p-4 text-sm font-semibold text-slate-600">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {admins_html}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -325,19 +440,22 @@ async def admin_dashboard(request: Request):
                     <h1 class="text-3xl font-bold text-slate-800 mb-6">Set Admin Password</h1>
                     <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-lg">
                         <p class="text-slate-500 mb-6">Create a password to login directly without using Google SSO.</p>
+                        
                         <form id="passForm" onsubmit="savePassword(event)" class="space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">New Password</label>
-                                <input type="password" id="newPass" required minlength="6" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="password" id="newPass" required placeholder="Minimum 6 characters" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
-                                <input type="password" id="confPass" required minlength="6" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="password" id="confPass" required placeholder="Retype your password" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <div id="passError" class="text-red-500 text-sm mt-2 hidden font-semibold"></div>
                             </div>
                             <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md">Save Password</button>
                         </form>
                     </div>
                 </div>
+
             </div>
         </div>
     </body>
@@ -352,7 +470,7 @@ async def success_page(msg: str, success: bool = True, is_admin_error: bool = Fa
     
     if is_admin_error:
         action_button = '<a href="/admin/login" class="bg-red-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-red-700 transition-colors">Retry Admin Login</a>'
-        desc_text = "Please retry with an authorized admin email address."
+        desc_text = "Please retry with an authorized administrator email address."
     else:
         action_button = '<a href="https://t.me/Private_Mail_Assistent_Bot" class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-blue-700 transition-colors">Open Telegram</a>'
         desc_text = "You may now close this page and return to the bot."
@@ -382,6 +500,11 @@ async def change_status(tg_id: int, status: str, reason: str = ""):
     update_user_status(tg_id, is_verified, status, reason)
     return {"status": "ok"}
 
+@frontend_router.post("/admin/remove_block/{record_id}")
+async def unblock_record(record_id: str):
+    remove_blocked_record(record_id)
+    return {"status": "ok"}
+
 @frontend_router.post("/admin/set_password")
 async def api_set_password(request: Request, password: str = Form(...)):
     admin_email = request.cookies.get("admin_session")
@@ -390,8 +513,25 @@ async def api_set_password(request: Request, password: str = Form(...)):
         return {"status": "ok"}
     return {"status": "error"}
 
+@frontend_router.post("/admin/add_admin")
+async def api_add_admin(request: Request, email: str = Form(...), role: str = Form(...)):
+    admin_email = request.cookies.get("admin_session")
+    if get_admin_role(admin_email) == "super_admin":
+        add_new_admin(email, role, admin_email)
+        return {"status": "ok"}
+    return Response(status_code=403)
+
+@frontend_router.post("/admin/remove_admin/{admin_id}")
+async def api_remove_admin(request: Request, admin_id: str):
+    admin_email = request.cookies.get("admin_session")
+    if get_admin_role(admin_email) == "super_admin":
+        remove_admin(admin_id)
+        return {"status": "ok"}
+    return Response(status_code=403)
+
 @frontend_router.get("/admin/logout")
 async def admin_logout(response: Response):
-    response = RedirectResponse(url="/admin/login")
+    # Logs the admin out and sends them to the login page with a success message
+    response = RedirectResponse(url="/admin/login?msg=Logged out successfully")
     response.delete_cookie("admin_session")
     return response

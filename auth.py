@@ -8,6 +8,7 @@ from database import create_auth_session, verify_auth_session, save_login_data, 
 oauth_sessions = {}
 
 def get_login_url(tg_id: int):
+    """Generates standard login URL for Telegram users."""
     state_uuid = create_auth_session(tg_id)
     flow = Flow.from_client_secrets_file(
         'credentials.json',
@@ -15,11 +16,11 @@ def get_login_url(tg_id: int):
         redirect_uri=f"{RENDER_URL}/callback"
     )
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', state=state_uuid)
-    oauth_sessions[state_uuid] = flow  # Flow ko memory mein save karein
+    oauth_sessions[state_uuid] = flow  
     return auth_url
 
 def get_admin_login_url():
-    """Admin ke liye special login URL generate karta hai (tg_id = 0)"""
+    """Generates a special login URL for Administrators (uses tg_id = 0 as flag)."""
     state_uuid = create_auth_session(0) 
     flow = Flow.from_client_secrets_file(
         'credentials.json',
@@ -27,16 +28,17 @@ def get_admin_login_url():
         redirect_uri=f"{RENDER_URL}/callback"
     )
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', state=state_uuid)
-    oauth_sessions[state_uuid] = flow  # Flow ko memory mein save karein
+    oauth_sessions[state_uuid] = flow  
     return auth_url
 
 def process_callback(code: str, state_uuid: str):
+    """Processes the Google OAuth response and links accounts."""
     tg_id = verify_auth_session(state_uuid)
     
     if tg_id is None:
         return "error", "Security Error: Session expired or invalid CSRF token."
     
-    # Memory se wahi exact flow nikalein jismein Google ka verifier code hai
+    # Retrieve flow from memory to complete PKCE validation
     flow = oauth_sessions.get(state_uuid)
     if not flow:
         return "error", "Session expired. Please try logging in again."
@@ -49,20 +51,20 @@ def process_callback(code: str, state_uuid: str):
         user_info = user_info_service.userinfo().get().execute()
         email = user_info.get("email")
 
-        # Memory clean karein
+        # Clean memory
         if state_uuid in oauth_sessions:
             del oauth_sessions[state_uuid]
 
-        # Agar admin login kar raha hai (tg_id == 0)
+        # Handle Administrator Login
         if tg_id == 0:
             if check_admin(email):
                 return "admin", email
             else:
-                return "error", "Access Denied: Aap Admin nahi hain!"
+                return "error", "Access Denied: You are not authorized as an Administrator."
 
-        # Agar normal user login kar raha hai
+        # Handle Standard User Login
         if is_blocked("email", email):
-            return "error", "Access Denied: This email address is blacklisted."
+            return "error", "Access Denied: This email address has been blacklisted."
 
         token_json = {
             "token": creds.token,
@@ -74,7 +76,7 @@ def process_callback(code: str, state_uuid: str):
         }
 
         save_login_data(tg_id, email, token_json)
-        return "user", "Success! Your account is linked."
+        return "user", "Success! Your account has been successfully linked."
     
     except Exception as e:
         logging.error(f"Auth Error: {e}")

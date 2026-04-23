@@ -16,4 +16,5 @@ SCOPES = [
 ]
 
 def get_utc_now():
+    """Generates the current UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()

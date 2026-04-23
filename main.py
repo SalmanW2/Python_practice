@@ -19,29 +19,29 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status = handle_user_start(user)
 
     if status == "blocked":
-        await update.message.reply_text("⛔ Sorry, aap is bot ko use nahi kar sakte. Aapko block kiya gaya hai.")
+        await update.message.reply_text("⛔ Sorry, your access to this bot has been restricted. You are blocked.")
     elif status == "pending":
-        await update.message.reply_text("⏳ Aapki request admin ke paas chali gayi hai. Account approve (is_verified) hone ka wait karein.")
+        await update.message.reply_text("⏳ Your access request has been sent to the administrator. Please wait for approval.")
     elif status == "approved":
         auth_url = get_login_url(user.id)
         keyboard = [[InlineKeyboardButton("🔗 Login with Google", url=auth_url)]]
         await update.message.reply_text(
-            "✅ Welcome Back! Aap approved hain. Apna Google account link karein:",
+            "✅ Welcome! Your access is approved. Please link your Google account below to proceed:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 async def logout_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if logout_user(user.id):
-        await update.message.reply_text("✅ Aap successfully logout ho gaye hain. Dobara login karne ke liye /start bhejein.")
+        await update.message.reply_text("✅ You have successfully logged out. To use the bot again, send /start.")
     else:
-        await update.message.reply_text("❌ Aap pehle se hi logged out hain ya data exist nahi karta.")
+        await update.message.reply_text("❌ You are already logged out or no data exists.")
 
 ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(CommandHandler("logout", logout_command))
 
 async def keep_awake():
-    """Render server ko har 14 minute baad ping karega taake wo sleep na kare."""
+    """Background task to ping the server every 14 minutes to prevent sleep on free tier."""
     url = f"{RENDER_URL}/ping"
     async with httpx.AsyncClient() as client:
         while True:
@@ -54,17 +54,17 @@ async def keep_awake():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Telegram webhook setup
+    # Webhook Initialization
     await ptb_app.initialize()
     await ptb_app.bot.set_webhook(url=f"{RENDER_URL}/{BOT_TOKEN}")
     await ptb_app.start()
     
-    # Anti-sleep loop start karna
+    # Start anti-sleep background process
     ping_task = asyncio.create_task(keep_awake())
     
     yield
     
-    # Shutdown routine
+    # Graceful Shutdown
     ping_task.cancel()
     await ptb_app.stop()
     await ptb_app.shutdown()
@@ -92,20 +92,20 @@ async def google_callback(request: Request):
 
     status_type, result_data = process_callback(code, state_uuid)
     
-    # Agar Admin login hua hai
+    # Route: Admin Login Success
     if status_type == "admin":
         response = RedirectResponse(url="/admin/dashboard", status_code=302)
         response.set_cookie(key="admin_session", value=result_data, max_age=86400)
         return response
         
-    # Agar Admin Login Fail hua (Ghalat Email)
+    # Route: Admin Login Failed (Unauthorized Email)
     elif status_type == "error" and "Admin" in result_data:
         return RedirectResponse(url=f"/callback_success?msg={result_data}&success=false&is_admin_error=true")
         
-    # Agar User login hua hai
+    # Route: User Login Success
     elif status_type == "user":
         return RedirectResponse(url=f"/callback_success?msg={result_data}&success=true")
         
-    # Standard Errors
+    # Route: Standard Errors
     else:
         return RedirectResponse(url=f"/callback_success?msg={result_data}&success=false")

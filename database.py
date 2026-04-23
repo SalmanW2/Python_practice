@@ -5,16 +5,15 @@ from config import SUPABASE_URL, SUPABASE_KEY, get_utc_now
 from passlib.context import CryptContext
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def is_blocked(block_type: str, value: str) -> bool:
-    """Check karta hai ke Telegram ID ya Email blocked_users table mein to nahi."""
+    """Checks if a Telegram ID or Email exists in the blocked_users table."""
     res = supabase.table("blocked_users").select("*").eq("block_type", block_type).eq("block_value", str(value)).execute()
     return len(res.data) > 0
 
 def handle_user_start(user) -> str:
-    """Naya user handle karta hai aur status return karta hai."""
+    """Handles new user registration and returns their current status."""
     if is_blocked("telegram", str(user.id)):
         return "blocked"
         
@@ -38,7 +37,7 @@ def handle_user_start(user) -> str:
     return "approved" if is_verified else "pending"
 
 def create_auth_session(tg_id: int) -> str:
-    """CSRF se bachne ke liye UUID generate karta hai."""
+    """Generates a UUID for CSRF protection during OAuth."""
     state_uuid = str(uuid.uuid4())
     supabase.table("auth_sessions").insert({
         "state_uuid": state_uuid,
@@ -47,7 +46,7 @@ def create_auth_session(tg_id: int) -> str:
     return state_uuid
 
 def verify_auth_session(state_uuid: str):
-    """Callback par UUID check karke delete karta hai."""
+    """Verifies and deletes the UUID upon OAuth callback."""
     res = supabase.table("auth_sessions").select("telegram_id").eq("state_uuid", state_uuid).execute()
     if res.data:
         supabase.table("auth_sessions").delete().eq("state_uuid", state_uuid).execute()
@@ -55,7 +54,7 @@ def verify_auth_session(state_uuid: str):
     return None
 
 def save_login_data(tg_id: int, email: str, token_json: dict):
-    """Email aur Tokens save karta hai."""
+    """Saves OAuth tokens and linked email to the database."""
     supabase.table("users").update({
         "email": email,
         "auth_token": token_json,
@@ -63,7 +62,7 @@ def save_login_data(tg_id: int, email: str, token_json: dict):
     }).eq("telegram_id", tg_id).execute()
 
 def logout_user(tg_id: int) -> bool:
-    """User ka token hatata hai aur history save karta hai."""
+    """Removes user token and logs the action in history."""
     user_res = supabase.table("users").select("email").eq("telegram_id", tg_id).execute()
     if user_res.data and user_res.data[0].get("email"):
         email = user_res.data[0]["email"]
@@ -79,7 +78,7 @@ def logout_user(tg_id: int) -> bool:
     return False
 
 def get_all_users():
-    """Admin dashboard ke liye sab users ka data nikalta hai."""
+    """Fetches all users for the Admin dashboard."""
     try:
         res = supabase.table("users").select("*").order("created_at", desc=True).execute()
         return res.data
@@ -87,20 +86,34 @@ def get_all_users():
         logging.error(f"Error fetching users: {e}")
         return []
 
+def get_all_blocked():
+    """Fetches all blocked records."""
+    res = supabase.table("blocked_users").select("*").order("blocked_at", desc=True).execute()
+    return res.data
+
+def get_all_admins():
+    """Fetches all administrators."""
+    res = supabase.table("admin_users").select("*").order("created_at", desc=True).execute()
+    return res.data
+
 def update_user_status(tg_id: int, is_verified: bool, status: str, reason: str = ""):
-    """Admin actions (Approve/Block) ko handle karta hai naye normalized database ke hisaab se."""
+    """Handles admin actions (Approve/Block/Unblock) and updates database state."""
     # 1. Update main users table
     data = {"is_verified": is_verified}
     if status == "approved":
         data["approved_at"] = get_utc_now()
-        # Agar pehle se block tha, toh blocked_users list se nikal dein
+        # Remove from blocked list if approving
         supabase.table("blocked_users").delete().eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
     
+    if status == "pending":
+        # Reset to pending (Unblock action)
+        data["approved_at"] = None
+        supabase.table("blocked_users").delete().eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
+
     supabase.table("users").update(data).eq("telegram_id", tg_id).execute()
 
-    # 2. Agar block kiya hai, toh blocked_users table mein daal dein
+    # 2. Add to blocked table if blocking
     if status == "blocked":
-        # Check karein ke pehle se block to nahi
         res = supabase.table("blocked_users").select("*").eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
         if not res.data:
             supabase.table("blocked_users").insert({
@@ -110,8 +123,12 @@ def update_user_status(tg_id: int, is_verified: bool, status: str, reason: str =
                 "blocked_at": get_utc_now()
             }).execute()
 
+def remove_blocked_record(record_id: str):
+    """Removes a specific block record by its UUID."""
+    supabase.table("blocked_users").delete().eq("id", record_id).execute()
+
 def check_admin(email: str) -> bool:
-    """Check karta hai ke login karne wala email admin_users table mein hai ya nahi."""
+    """Verifies if the email belongs to an administrator."""
     try:
         res = supabase.table("admin_users").select("*").eq("email", email).execute()
         return len(res.data) > 0
@@ -120,31 +137,42 @@ def check_admin(email: str) -> bool:
         return False
 
 def get_admin_role(email: str) -> str:
-    """Admin ka role return karta hai (super_admin ya admin)"""
+    """Returns the specific role of the admin (super_admin or admin)."""
     res = supabase.table("admin_users").select("role").eq("email", email).execute()
     if res.data:
         return res.data[0].get("role", "admin")
     return "admin"
 
+def add_new_admin(email: str, role: str, added_by: str):
+    """Inserts a new administrator into the database."""
+    supabase.table("admin_users").insert({
+        "email": email,
+        "role": role,
+        "added_by": added_by,
+        "created_at": get_utc_now()
+    }).execute()
+
+def remove_admin(admin_id: str):
+    """Removes an administrator from the database."""
+    supabase.table("admin_users").delete().eq("id", admin_id).execute()
+
 def set_admin_password(email: str, password: str):
-    """Admin ka naya password hash kar ke database mein save karta hai."""
+    """Hashes and saves a custom password for manual admin login."""
     hashed_password = pwd_context.hash(password)
     supabase.table("admin_users").update({"password_hash": hashed_password}).eq("email", email).execute()
 
 def verify_admin_password(email: str, password: str) -> bool:
-    """Manual login ke waqt password check karta hai."""
+    """Validates the email and password for manual login."""
     try:
         res = supabase.table("admin_users").select("password_hash").eq("email", email).execute()
         if not res.data:
             return False
             
         hashed_password = res.data[0].get("password_hash")
-        if not hashed_password: # Agar password set hi nahi hua
+        if not hashed_password: 
             return False
             
         return pwd_context.verify(password, hashed_password)
     except Exception as e:
         logging.error(f"Password Verify Error: {e}")
         return False
-
-
