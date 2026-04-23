@@ -86,7 +86,7 @@ async def admin_auth_google():
     url = get_admin_login_url()
     return RedirectResponse(url=url)
 
-# ADMIN DASHBOARD KO SECURE KAREIN (Cookies ke sath)
+# --- 3. Main Admin Dashboard (Secure + Live Search + Modals) ---
 @frontend_router.get("/admin/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     # Check karein ke admin ka browser cookie mojood hai ya nahi
@@ -94,11 +94,6 @@ async def admin_dashboard(request: Request):
     if not admin_email:
         return RedirectResponse(url="/admin/login")
 
-    users = get_all_users()
-
-# --- 3. Main Admin Dashboard (Live Search & Modals) ---
-@frontend_router.get("/admin/dashboard", response_class=HTMLResponse)
-async def admin_dashboard():
     users = get_all_users()
     return f"""
     <html>
@@ -215,4 +210,3 @@ async def change_status(tg_id: int, status: str, reason: str = ""):
     # Agar status blocked hai toh is_verified ko False rakhein aur block table handle karein
     update_user_status(tg_id, is_verified, status, reason)
     return {"status": "ok"}
-    
