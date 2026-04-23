@@ -74,3 +74,34 @@ def logout_user(tg_id: int) -> bool:
         supabase.table("users").update({"auth_token": None}).eq("telegram_id", tg_id).execute()
         return True
     return False
+def get_all_users():
+    """Admin dashboard ke liye sab users ka data nikalta hai."""
+    try:
+        res = supabase.table("users").select("*").order("created_at", desc=True).execute()
+        return res.data
+    except Exception as e:
+        logging.error(f"Error fetching users: {e}")
+        return []
+
+def update_user_status(tg_id: int, is_verified: bool, status: str, reason: str = ""):
+    """Admin actions (Approve/Block) ko handle karta hai naye normalized database ke hisaab se."""
+    # 1. Update main users table
+    data = {"is_verified": is_verified}
+    if status == "approved":
+        data["approved_at"] = get_utc_now()
+        # Agar pehle se block tha, toh blocked_users list se nikal dein
+        supabase.table("blocked_users").delete().eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
+    
+    supabase.table("users").update(data).eq("telegram_id", tg_id).execute()
+
+    # 2. Agar block kiya hai, toh blocked_users table mein daal dein
+    if status == "blocked":
+        # Check karein ke pehle se block to nahi
+        res = supabase.table("blocked_users").select("*").eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
+        if not res.data:
+            supabase.table("blocked_users").insert({
+                "block_type": "telegram",
+                "block_value": str(tg_id),
+                "reason": reason,
+                "blocked_at": get_utc_now()
+            }).execute()
