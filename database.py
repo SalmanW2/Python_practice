@@ -2,8 +2,11 @@ import logging
 import uuid
 from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY, get_utc_now
+from passlib.context import CryptContext
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def is_blocked(block_type: str, value: str) -> bool:
     """Check karta hai ke Telegram ID ya Email blocked_users table mein to nahi."""
@@ -115,3 +118,33 @@ def check_admin(email: str) -> bool:
     except Exception as e:
         logging.error(f"Admin Check Error: {e}")
         return False
+
+def get_admin_role(email: str) -> str:
+    """Admin ka role return karta hai (super_admin ya admin)"""
+    res = supabase.table("admin_users").select("role").eq("email", email).execute()
+    if res.data:
+        return res.data[0].get("role", "admin")
+    return "admin"
+
+def set_admin_password(email: str, password: str):
+    """Admin ka naya password hash kar ke database mein save karta hai."""
+    hashed_password = pwd_context.hash(password)
+    supabase.table("admin_users").update({"password_hash": hashed_password}).eq("email", email).execute()
+
+def verify_admin_password(email: str, password: str) -> bool:
+    """Manual login ke waqt password check karta hai."""
+    try:
+        res = supabase.table("admin_users").select("password_hash").eq("email", email).execute()
+        if not res.data:
+            return False
+            
+        hashed_password = res.data[0].get("password_hash")
+        if not hashed_password: # Agar password set hi nahi hua
+            return False
+            
+        return pwd_context.verify(password, hashed_password)
+    except Exception as e:
+        logging.error(f"Password Verify Error: {e}")
+        return False
+
+
