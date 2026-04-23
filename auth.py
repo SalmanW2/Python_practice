@@ -2,7 +2,7 @@ import logging
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from config import RENDER_URL, SCOPES
-from database import create_auth_session, verify_auth_session, save_login_data, is_blocked
+from database import create_auth_session, verify_auth_session, save_login_data, is_blocked, check_admin
 
 def get_login_url(tg_id: int):
     state_uuid = create_auth_session(tg_id)
@@ -14,11 +14,22 @@ def get_login_url(tg_id: int):
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', state=state_uuid)
     return auth_url
 
+def get_admin_login_url():
+    """Admin ke liye special login URL generate karta hai (tg_id = 0)"""
+    state_uuid = create_auth_session(0) 
+    flow = Flow.from_client_secrets_file(
+        'credentials.json',
+        scopes=SCOPES,
+        redirect_uri=f"{RENDER_URL}/callback"
+    )
+    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', state=state_uuid)
+    return auth_url
+
 def process_callback(code: str, state_uuid: str):
     tg_id = verify_auth_session(state_uuid)
     
-    if not tg_id:
-        return False, "Security Error: Session expired or invalid CSRF token."
+    if tg_id is None:
+        return "error", "Security Error: Session expired or invalid CSRF token."
     
     try:
         flow = Flow.from_client_secrets_file(
@@ -33,8 +44,16 @@ def process_callback(code: str, state_uuid: str):
         user_info = user_info_service.userinfo().get().execute()
         email = user_info.get("email")
 
+        # Agar admin login kar raha hai (tg_id == 0)
+        if tg_id == 0:
+            if check_admin(email):
+                return "admin", email
+            else:
+                return "error", "Access Denied: Aap Admin nahi hain!"
+
+        # Agar normal user login kar raha hai
         if is_blocked("email", email):
-            return False, "Access Denied: This email address is blacklisted."
+            return "error", "Access Denied: This email address is blacklisted."
 
         token_json = {
             "token": creds.token,
@@ -46,7 +65,8 @@ def process_callback(code: str, state_uuid: str):
         }
 
         save_login_data(tg_id, email, token_json)
-        return True, "Success! Your account is linked."
+        return "user", "Success! Your account is linked."
+    
     except Exception as e:
         logging.error(f"Auth Error: {e}")
-        return False, f"Authentication failed: {e}"
+        return "error", f"Authentication failed: {e}"
