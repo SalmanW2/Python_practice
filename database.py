@@ -4,6 +4,7 @@ from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY, get_utc_now
 from passlib.context import CryptContext
 
+# Initialize Supabase and Password Hashing
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -98,21 +99,17 @@ def get_all_admins():
 
 def update_user_status(tg_id: int, is_verified: bool, status: str, reason: str = ""):
     """Handles admin actions (Approve/Block/Unblock) and updates database state."""
-    # 1. Update main users table
     data = {"is_verified": is_verified}
     if status == "approved":
         data["approved_at"] = get_utc_now()
-        # Remove from blocked list if approving
         supabase.table("blocked_users").delete().eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
     
     if status == "pending":
-        # Reset to pending (Unblock action)
         data["approved_at"] = None
         supabase.table("blocked_users").delete().eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
 
     supabase.table("users").update(data).eq("telegram_id", tg_id).execute()
 
-    # 2. Add to blocked table if blocking
     if status == "blocked":
         res = supabase.table("blocked_users").select("*").eq("block_type", "telegram").eq("block_value", str(tg_id)).execute()
         if not res.data:
@@ -157,12 +154,13 @@ def remove_admin(admin_id: str):
     supabase.table("admin_users").delete().eq("id", admin_id).execute()
 
 def set_admin_password(email: str, password: str):
-    """Hashes and saves a custom password for manual admin login."""
-    hashed_password = pwd_context.hash(password)
+    """Hashes and saves a custom password. Safely truncates to 72 bytes for bcrypt compatibility."""
+    safe_password = password[:72]
+    hashed_password = pwd_context.hash(safe_password)
     supabase.table("admin_users").update({"password_hash": hashed_password}).eq("email", email).execute()
 
 def verify_admin_password(email: str, password: str) -> bool:
-    """Validates the email and password for manual login."""
+    """Validates the email and password for manual login. Safely truncates to 72 bytes."""
     try:
         res = supabase.table("admin_users").select("password_hash").eq("email", email).execute()
         if not res.data:
@@ -172,7 +170,8 @@ def verify_admin_password(email: str, password: str) -> bool:
         if not hashed_password: 
             return False
             
-        return pwd_context.verify(password, hashed_password)
+        safe_password = password[:72]
+        return pwd_context.verify(safe_password, hashed_password)
     except Exception as e:
         logging.error(f"Password Verify Error: {e}")
         return False
