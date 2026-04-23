@@ -95,14 +95,17 @@ async def google_callback(request: Request):
     # Agar Admin login hua hai
     if status_type == "admin":
         response = RedirectResponse(url="/admin/dashboard", status_code=302)
-        # Admin ke browser mein 24 ghante ke liye cookie save kar dein
         response.set_cookie(key="admin_session", value=result_data, max_age=86400)
         return response
+        
+    # Agar Admin Login Fail hua (Ghalat Email)
+    elif status_type == "error" and "Admin" in result_data:
+        return RedirectResponse(url=f"/callback_success?msg={result_data}&success=false&is_admin_error=true")
         
     # Agar User login hua hai
     elif status_type == "user":
         return RedirectResponse(url=f"/callback_success?msg={result_data}&success=true")
         
-    # Agar Error aaya hai (e.g. Blocked user ya Fake Admin)
+    # Standard Errors
     else:
         return RedirectResponse(url=f"/callback_success?msg={result_data}&success=false")
