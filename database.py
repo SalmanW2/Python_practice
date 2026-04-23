@@ -105,3 +105,11 @@ def update_user_status(tg_id: int, is_verified: bool, status: str, reason: str =
                 "reason": reason,
                 "blocked_at": get_utc_now()
             }).execute()
+            def check_admin(email: str) -> bool:
+    """Check karta hai ke login karne wala email admin_users table mein hai ya nahi."""
+    try:
+        res = supabase.table("admin_users").select("*").eq("email", email).execute()
+        return len(res.data) > 0
+    except Exception as e:
+        logging.error(f"Admin Check Error: {e}")
+        return False
