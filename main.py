@@ -1,3 +1,6 @@
+import asyncio
+import httpx
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -37,12 +40,32 @@ async def logout_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(CommandHandler("logout", logout_command))
 
+async def keep_awake():
+    """Render server ko har 14 minute baad ping karega taake wo sleep na kare."""
+    url = f"{RENDER_URL}/ping"
+    async with httpx.AsyncClient() as client:
+        while True:
+            await asyncio.sleep(14 * 60) # 14 minutes
+            try:
+                await client.get(url)
+                logging.info("Anti-sleep ping sent successfully.")
+            except Exception as e:
+                logging.error(f"Anti-sleep ping failed: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Telegram webhook setup
     await ptb_app.initialize()
     await ptb_app.bot.set_webhook(url=f"{RENDER_URL}/{BOT_TOKEN}")
     await ptb_app.start()
+    
+    # Anti-sleep loop start karna
+    ping_task = asyncio.create_task(keep_awake())
+    
     yield
+    
+    # Shutdown routine
+    ping_task.cancel()
     await ptb_app.stop()
     await ptb_app.shutdown()
 
