@@ -255,7 +255,6 @@ async def admin_dashboard(request: Request):
                     element.classList.add('bg-blue-600', 'text-white', 'font-semibold');
                 }}
 
-                // Hide menu on mobile after selection
                 if(window.innerWidth < 1024) {{
                     document.getElementById('sidebar').classList.add('-translate-x-full');
                     document.getElementById('mobileOverlay').classList.add('hidden');
@@ -280,7 +279,6 @@ async def admin_dashboard(request: Request):
                 }}
             }}
 
-            // --- Custom Modal System ---
             let confirmActionCallback = null;
 
             function openAlert(title, message, isError = false) {{
@@ -311,7 +309,6 @@ async def admin_dashboard(request: Request):
                 if (confirmActionCallback) await confirmActionCallback();
             }}
 
-            // --- API Action Functions ---
             let currentBlockId = null;
 
             function openBlockModal(tg_id) {{
@@ -374,10 +371,14 @@ async def admin_dashboard(request: Request):
                     else openAlert("Error", "Failed to add administrator. Ensure you are a Super Admin.", true);
                 }} catch (e) {{
                     openAlert("Error", "Network error occurred.", true);
+                }} finally {{
+                    let btn = document.getElementById('btnAddAdmin');
+                    btn.innerHTML = 'Add Admin';
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-75', 'cursor-not-allowed');
                 }}
             }}
 
-            // --- Step-by-Step Password Logic ---
             function nextPasswordStep(event) {{
                 event.preventDefault();
                 let p1 = document.getElementById('newPass').value;
@@ -399,6 +400,7 @@ async def admin_dashboard(request: Request):
                 let p1 = document.getElementById('newPass').value;
                 let p2 = document.getElementById('confPass').value;
                 let errDiv = document.getElementById('passErrorInline');
+                let btn = document.getElementById('btnSavePass');
                 
                 if(p1 !== p2) {{ 
                     errDiv.innerText = "Passwords do not match!"; 
@@ -408,25 +410,33 @@ async def admin_dashboard(request: Request):
                 
                 errDiv.classList.add('hidden');
                 setButtonLoading('btnSavePass');
+                
                 let formData = new FormData();
                 formData.append('password', p1);
                 
-                let res = await fetch('/admin/set_password', {{method: 'POST', body: formData}});
-                let data = await res.json();
-                
-                if(data.status === 'ok') {{ 
-                    document.getElementById('passForm').reset();
-                    document.getElementById('step2-div').classList.add('hidden');
-                    document.getElementById('btnNextPass').classList.remove('hidden');
-                    document.getElementById('btnSavePass').classList.add('hidden');
+                try {{
+                    let res = await fetch('/admin/set_password', {{method: 'POST', body: formData}});
+                    if (!res.ok) throw new Error("Server Error");
                     
-                    document.getElementById('btnSavePass').innerHTML = 'Save Password';
-                    document.getElementById('btnSavePass').disabled = false;
-                    document.getElementById('btnSavePass').classList.remove('opacity-75', 'cursor-not-allowed');
+                    let data = await res.json();
                     
-                    openAlert("Success", "Your new password has been saved securely.");
-                }} else {{
-                    openAlert("Error", "Failed to save password.", true);
+                    if(data.status === 'ok') {{ 
+                        document.getElementById('passForm').reset();
+                        document.getElementById('step2-div').classList.add('hidden');
+                        document.getElementById('btnNextPass').classList.remove('hidden');
+                        btn.classList.add('hidden');
+                        
+                        openAlert("Success", "Your new password has been saved securely.");
+                    }} else {{
+                        openAlert("Error", "Failed to save password. Session may have expired.", true);
+                    }}
+                }} catch (error) {{
+                    openAlert("Error", "A database or network error occurred while saving.", true);
+                }} finally {{
+                    // Reset Button State Always!
+                    btn.innerHTML = 'Save Password';
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-75', 'cursor-not-allowed');
                 }}
             }}
         </script>
@@ -464,11 +474,11 @@ async def admin_dashboard(request: Request):
             </div>
         </div>
 
-        <div class="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
-            <div class="text-xl font-bold flex items-center gap-2"><span>📧</span> Admin Panel</div>
+        <div class="lg:hidden bg-slate-900 text-white p-4 flex items-center gap-4 sticky top-0 z-40 shadow-md">
             <button onclick="toggleMobileMenu()" class="p-2 bg-slate-800 rounded-lg focus:outline-none">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
+            <div class="text-xl font-bold flex items-center gap-2"><span>📧</span> Admin Panel</div>
         </div>
 
         <div id="mobileOverlay" onclick="toggleMobileMenu()" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"></div>
@@ -601,7 +611,6 @@ async def success_page(msg: str, success: bool = True, is_admin_error: bool = Fa
     color = "green" if success else "red"
     icon = "✅" if success else "❌"
     
-    # Smarter Logic to determine if it's a CSRF/Session error vs General Admin Error
     if is_admin_error:
         action_button = '<a href="/admin/login" class="bg-red-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg block hover:bg-red-700 transition-colors mb-3">Retry Admin Login</a>'
         desc_text = "Please retry with an authorized administrator email address."
@@ -647,8 +656,12 @@ async def unblock_record(record_id: str):
 async def api_set_password(request: Request, password: str = Form(...)):
     admin_email = request.cookies.get("admin_session")
     if admin_email:
-        set_admin_password(admin_email, password)
-        return {"status": "ok"}
+        try:
+            set_admin_password(admin_email, password)
+            return {"status": "ok"}
+        except Exception as e:
+            logging.error(f"Set Password Error: {e}")
+            return {"status": "error"}
     return {"status": "error"}
 
 @frontend_router.post("/admin/add_admin")
