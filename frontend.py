@@ -163,14 +163,14 @@ async def admin_dashboard(request: Request):
         
         if is_user_blocked:
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">BLOCKED</span>'
-            buttons_html = f'<button onclick="unblockUser({u["telegram_id"]})" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition-all text-sm">Unblock Access</button>'
+            buttons_html = f'<button id="btn-unblock-{u["telegram_id"]}" onclick="unblockUser({u["telegram_id"]}, this.id)" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition-all text-sm">Unblock Access</button>'
         elif u.get('is_verified'):
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">APPROVED</span>'
             buttons_html = f'<button onclick="openBlockModal({u["telegram_id"]})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>'
         else:
             status_html = '<span class="px-3 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700">PENDING</span>'
             buttons_html = f'''
-                <button onclick="approveUser({u['telegram_id']})" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition-all text-sm">Approve</button>
+                <button id="btn-app-{u["telegram_id"]}" onclick="approveUser({u['telegram_id']}, this.id)" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-600 hover:text-white transition-all text-sm">Approve</button>
                 <button onclick="openBlockModal({u['telegram_id']})" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all text-sm">Block</button>
             '''
 
@@ -183,7 +183,7 @@ async def admin_dashboard(request: Request):
             </td>
             <td class="p-4">{status_html}</td>
             <td class="p-4 text-sm text-slate-500">{u.get('created_at', '').split('T')[0]}</td>
-            <td class="p-4 space-x-2">{buttons_html}</td>
+            <td class="p-4 space-x-2 flex items-center">{buttons_html}</td>
         </tr>
         '''
 
@@ -195,7 +195,7 @@ async def admin_dashboard(request: Request):
         <tr class="border-b border-slate-100">
             <td class="p-4 font-semibold text-slate-800">{b['block_type'].upper()}: {b['block_value']}</td>
             <td class="p-4 text-slate-600">{b.get('reason', 'No reason provided')}</td>
-            <td class="p-4"><button onclick="removeBlockRecord('{b['id']}')" class="text-blue-600 hover:underline font-semibold text-sm">Remove Block</button></td>
+            <td class="p-4"><button onclick="requestRemoveBlock('{b['id']}')" class="text-blue-600 hover:underline font-semibold text-sm">Remove Block</button></td>
         </tr>
         '''
     if not blocklist_html:
@@ -205,7 +205,7 @@ async def admin_dashboard(request: Request):
     admins = get_all_admins()
     admins_html = ""
     for a in admins:
-        remove_btn = f'''<button onclick="removeAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm">Remove</button>''' if a['email'] != admin_email else '<span class="text-slate-400 text-sm">Current User</span>'
+        remove_btn = f'''<button onclick="requestRemoveAdmin('{a["id"]}')" class="text-red-600 hover:underline font-semibold text-sm">Remove</button>''' if a['email'] != admin_email else '<span class="text-slate-400 text-sm font-bold">Current User</span>'
         admins_html += f'''
         <tr class="border-b border-slate-100">
             <td class="p-4 font-semibold text-slate-800">{a['email']}</td>
@@ -221,7 +221,17 @@ async def admin_dashboard(request: Request):
         {FAVICON_SVG}
         <script src="https://cdn.tailwindcss.com"></script>
         <script>
+            // --- System Utilities & Memory ---
+            const SPINNER_SVG = `<svg class="animate-spin h-4 w-4 text-current inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
+            document.addEventListener("DOMContentLoaded", () => {{
+                let activeTab = localStorage.getItem("activeAdminTab") || "users-section";
+                let element = document.querySelector(`[onclick*="${{activeTab}}"]`);
+                if (element) showSection(activeTab, element);
+            }});
+
             function showSection(sectionId, element) {{
+                localStorage.setItem("activeAdminTab", sectionId);
                 document.querySelectorAll('.dashboard-section').forEach(el => el.classList.add('hidden'));
                 document.getElementById(sectionId).classList.remove('hidden');
                 
@@ -243,7 +253,47 @@ async def admin_dashboard(request: Request):
                 }});
             }}
 
-            // --- Modal & User Actions ---
+            function setButtonLoading(btnId) {{
+                let btn = document.getElementById(btnId);
+                if (btn) {{
+                    btn.disabled = true;
+                    btn.innerHTML = `${{SPINNER_SVG}} Processing...`;
+                    btn.classList.add('opacity-75', 'cursor-not-allowed');
+                }}
+            }}
+
+            // --- Custom Modal System ---
+            let confirmActionCallback = null;
+
+            function openAlert(title, message, isError = false) {{
+                document.getElementById('alertTitle').innerText = title;
+                document.getElementById('alertMessage').innerText = message;
+                document.getElementById('alertTitle').className = isError ? 'text-xl font-bold text-red-600 mb-2' : 'text-xl font-bold text-green-600 mb-2';
+                document.getElementById('alertModal').classList.remove('hidden');
+            }}
+
+            function closeAlert() {{
+                document.getElementById('alertModal').classList.add('hidden');
+            }}
+
+            function openConfirmModal(title, message, callback) {{
+                document.getElementById('confirmTitle').innerText = title;
+                document.getElementById('confirmMessage').innerText = message;
+                confirmActionCallback = callback;
+                document.getElementById('customConfirmModal').classList.remove('hidden');
+            }}
+
+            function closeConfirmModal() {{
+                document.getElementById('customConfirmModal').classList.add('hidden');
+                confirmActionCallback = null;
+            }}
+
+            async function executeConfirm() {{
+                setButtonLoading('btnConfirmAction');
+                if (confirmActionCallback) await confirmActionCallback();
+            }}
+
+            // --- API Action Functions ---
             let currentBlockId = null;
 
             function openBlockModal(tg_id) {{
@@ -259,84 +309,140 @@ async def admin_dashboard(request: Request):
 
             async function submitBlock() {{
                 let reason = document.getElementById('blockReason').value;
-                if (!reason) {{ alert("Please provide a reason for blocking."); return; }}
+                if (!reason) {{ openAlert("Error", "Please provide a reason for blocking.", true); return; }}
+                setButtonLoading('btnSubmitBlock');
                 await fetch(`/admin/update/${{currentBlockId}}/blocked?reason=${{encodeURIComponent(reason)}}`, {{method: 'POST'}});
                 location.reload();
             }}
 
-            async function approveUser(tg_id) {{
+            async function approveUser(tg_id, btnId) {{
+                setButtonLoading(btnId);
                 await fetch(`/admin/update/${{tg_id}}/approved`, {{method: 'POST'}});
                 location.reload();
             }}
 
-            async function unblockUser(tg_id) {{
+            async function unblockUser(tg_id, btnId) {{
+                setButtonLoading(btnId);
                 await fetch(`/admin/update/${{tg_id}}/pending`, {{method: 'POST'}});
                 location.reload();
             }}
 
-            // --- Blocklist Actions ---
-            async function removeBlockRecord(recordId) {{
-                if(confirm("Are you sure you want to remove this block?")) {{
+            function requestRemoveBlock(recordId) {{
+                openConfirmModal("Remove Block", "Are you sure you want to remove this block? The user will be returned to Pending status.", async () => {{
                     await fetch(`/admin/remove_block/${{recordId}}`, {{method: 'POST'}});
                     location.reload();
+                }});
+            }}
+
+            function requestRemoveAdmin(adminId) {{
+                openConfirmModal("Remove Admin", "Are you sure you want to revoke this user's administrator privileges?", async () => {{
+                    await fetch(`/admin/remove_admin/${{adminId}}`, {{method: 'POST'}});
+                    location.reload();
+                }});
+            }}
+
+            async function submitNewAdmin(event) {{
+                event.preventDefault();
+                let email = document.getElementById('newAdminEmail').value;
+                
+                setButtonLoading('btnAddAdmin');
+                let formData = new FormData();
+                formData.append('email', email);
+                formData.append('role', 'admin'); // Hardcoded to admin per requirement
+                
+                try {{
+                    let res = await fetch('/admin/add_admin', {{method: 'POST', body: formData}});
+                    if(res.ok) location.reload();
+                    else openAlert("Error", "Failed to add administrator. Ensure you are a Super Admin.", true);
+                }} catch (e) {{
+                    openAlert("Error", "Network error occurred.", true);
                 }}
             }}
 
-            // --- Password Action ---
+            // --- Step-by-Step Password Logic ---
+            function nextPasswordStep(event) {{
+                event.preventDefault();
+                let p1 = document.getElementById('newPass').value;
+                let errDiv = document.getElementById('passErrorInline');
+                
+                if (p1.length < 6) {{
+                    errDiv.innerText = "Password must be at least 6 characters.";
+                    errDiv.classList.remove('hidden');
+                }} else {{
+                    errDiv.classList.add('hidden');
+                    document.getElementById('step2-div').classList.remove('hidden');
+                    document.getElementById('btnNextPass').classList.add('hidden');
+                    document.getElementById('btnSavePass').classList.remove('hidden');
+                }}
+            }}
+
             async function savePassword(event) {{
                 event.preventDefault();
                 let p1 = document.getElementById('newPass').value;
                 let p2 = document.getElementById('confPass').value;
-                let errDiv = document.getElementById('passError');
+                let errDiv = document.getElementById('passErrorInline');
                 
-                if(p1.length < 6) {{ errDiv.innerText = "Password must be at least 6 characters."; errDiv.classList.remove('hidden'); return; }}
-                if(p1 !== p2) {{ errDiv.innerText = "Passwords do not match!"; errDiv.classList.remove('hidden'); return; }}
+                if(p1 !== p2) {{ 
+                    errDiv.innerText = "Passwords do not match!"; 
+                    errDiv.classList.remove('hidden'); 
+                    return; 
+                }}
                 
                 errDiv.classList.add('hidden');
+                setButtonLoading('btnSavePass');
                 let formData = new FormData();
                 formData.append('password', p1);
                 
                 let res = await fetch('/admin/set_password', {{method: 'POST', body: formData}});
                 let data = await res.json();
+                
                 if(data.status === 'ok') {{ 
-                    alert("Password saved successfully!"); 
-                    document.getElementById('passForm').reset(); 
-                }}
-            }}
-
-            // --- Admin Management Actions ---
-            async function submitNewAdmin(event) {{
-                event.preventDefault();
-                let email = document.getElementById('newAdminEmail').value;
-                let role = document.getElementById('newAdminRole').value;
-                
-                let formData = new FormData();
-                formData.append('email', email);
-                formData.append('role', role);
-                
-                let res = await fetch('/admin/add_admin', {{method: 'POST', body: formData}});
-                if(res.ok) location.reload();
-                else alert("Error adding administrator.");
-            }}
-
-            async function removeAdmin(adminId) {{
-                if(confirm("Remove this administrator?")) {{
-                    await fetch(`/admin/remove_admin/${{adminId}}`, {{method: 'POST'}});
-                    location.reload();
+                    document.getElementById('passForm').reset();
+                    // Reset UI
+                    document.getElementById('step2-div').classList.add('hidden');
+                    document.getElementById('btnNextPass').classList.remove('hidden');
+                    document.getElementById('btnSavePass').classList.add('hidden');
+                    
+                    document.getElementById('btnSavePass').innerHTML = 'Save Password';
+                    document.getElementById('btnSavePass').disabled = false;
+                    document.getElementById('btnSavePass').classList.remove('opacity-75', 'cursor-not-allowed');
+                    
+                    openAlert("Success", "Your new password has been saved securely.");
+                }} else {{
+                    openAlert("Error", "Failed to save password.", true);
                 }}
             }}
         </script>
     </head>
     <body class="bg-slate-50 min-h-screen font-sans">
         
+        <div id="alertModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
+            <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm text-center">
+                <h3 id="alertTitle" class="text-xl font-bold mb-2"></h3>
+                <p id="alertMessage" class="text-sm text-slate-600 mb-6"></p>
+                <button onclick="closeAlert()" class="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-800 w-full">OK</button>
+            </div>
+        </div>
+
+        <div id="customConfirmModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
+            <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm text-center">
+                <h3 id="confirmTitle" class="text-xl font-bold text-slate-800 mb-2">Confirm Action</h3>
+                <p id="confirmMessage" class="text-sm text-slate-600 mb-6">Are you sure?</p>
+                <div class="flex justify-center gap-3">
+                    <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 w-full border border-slate-200">Cancel</button>
+                    <button id="btnConfirmAction" onclick="executeConfirm()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md w-full">Confirm</button>
+                </div>
+            </div>
+        </div>
+
         <div id="blockModal" class="hidden fixed inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
             <div class="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md">
                 <h3 class="text-xl font-bold text-slate-800 mb-2">Block User</h3>
                 <p class="text-sm text-slate-500 mb-4">Please specify the reason for blocking this user.</p>
-                <input type="text" id="blockReason" placeholder="e.g., Spamming..." class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none mb-6">
+                <input type="text" id="blockReason" placeholder="e.g., Spamming, Violation of terms..." class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none mb-6">
                 <div class="flex justify-end gap-3">
                     <button onclick="closeBlockModal()" class="px-4 py-2 rounded-lg font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
-                    <button onclick="submitBlock()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md">Confirm Block</button>
+                    <button id="btnSubmitBlock" onclick="submitBlock()" class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 shadow-md">Confirm Block</button>
                 </div>
             </div>
         </div>
@@ -345,7 +451,7 @@ async def admin_dashboard(request: Request):
             <div class="w-64 bg-slate-900 text-white min-h-screen p-6 hidden lg:block">
                 <div class="text-2xl font-bold mb-10 flex items-center gap-2"><span>📧</span> Admin Panel</div>
                 <nav class="space-y-2">
-                    <a href="#" onclick="showSection('users-section', this)" class="nav-link block p-3 bg-blue-600 text-white font-semibold rounded-lg transition-all">User Management</a>
+                    <a href="#" onclick="showSection('users-section', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">User Management</a>
                     <a href="#" onclick="showSection('blocklist-section', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">Blocklist</a>
                     {manage_admins_tab}
                     <a href="#" onclick="showSection('set-password-section', this)" class="nav-link block p-3 hover:bg-slate-800 text-slate-400 rounded-lg transition-all">Set Password</a>
@@ -356,8 +462,7 @@ async def admin_dashboard(request: Request):
             </div>
 
             <div class="flex-1 p-10">
-                
-                <div id="users-section" class="dashboard-section">
+                <div id="users-section" class="dashboard-section hidden">
                     <div class="flex justify-between items-center mb-10">
                         <h1 class="text-3xl font-bold text-slate-800">User Management</h1>
                         <div class="flex gap-4">
@@ -407,16 +512,9 @@ async def admin_dashboard(request: Request):
                         <form onsubmit="submitNewAdmin(event)" class="flex gap-4 items-end">
                             <div class="flex-1">
                                 <label class="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
-                                <input type="email" id="newAdminEmail" required class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="email" id="newAdminEmail" required placeholder="newadmin@example.com" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
-                            <div class="w-64">
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Role</label>
-                                <select id="newAdminRole" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                                    <option value="admin">Admin</option>
-                                    <option value="super_admin">Super Admin</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 h-[50px]">Add User</button>
+                            <button type="submit" id="btnAddAdmin" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 h-[50px] shadow-sm">Add Admin</button>
                         </form>
                     </div>
 
@@ -441,17 +539,21 @@ async def admin_dashboard(request: Request):
                     <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 max-w-lg">
                         <p class="text-slate-500 mb-6">Create a password to login directly without using Google SSO.</p>
                         
-                        <form id="passForm" onsubmit="savePassword(event)" class="space-y-4">
+                        <form id="passForm" class="space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 mb-1">New Password</label>
                                 <input type="password" id="newPass" required placeholder="Minimum 6 characters" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
-                                <input type="password" id="confPass" required placeholder="Retype your password" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                                <div id="passError" class="text-red-500 text-sm mt-2 hidden font-semibold"></div>
+                            
+                            <div id="passErrorInline" class="text-red-500 text-sm font-semibold hidden"></div>
+
+                            <div id="step2-div" class="hidden">
+                                <label class="block text-sm font-medium text-slate-700 mb-1 mt-2">Confirm Password</label>
+                                <input type="password" id="confPass" placeholder="Retype your password" class="w-full p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
-                            <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md">Save Password</button>
+                            
+                            <button type="button" id="btnNextPass" onclick="nextPasswordStep(event)" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-bold hover:bg-slate-900 shadow-md w-full">Next</button>
+                            <button type="submit" id="btnSavePass" onclick="savePassword(event)" class="hidden bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md w-full">Save Password</button>
                         </form>
                     </div>
                 </div>
