@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Form, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from database import get_all_users, update_user_status, is_blocked
+from auth import get_admin_login_url
 import logging
 
 frontend_router = APIRouter()
@@ -78,6 +79,22 @@ async def admin_login_page():
     </body>
     </html>
     """
+
+@frontend_router.get("/admin/auth/google")
+async def admin_auth_google():
+    """Button click hone par Admin ko Google par bhejta hai."""
+    url = get_admin_login_url()
+    return RedirectResponse(url=url)
+
+# ADMIN DASHBOARD KO SECURE KAREIN (Cookies ke sath)
+@frontend_router.get("/admin/dashboard", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    # Check karein ke admin ka browser cookie mojood hai ya nahi
+    admin_email = request.cookies.get("admin_session")
+    if not admin_email:
+        return RedirectResponse(url="/admin/login")
+
+    users = get_all_users()
 
 # --- 3. Main Admin Dashboard (Live Search & Modals) ---
 @frontend_router.get("/admin/dashboard", response_class=HTMLResponse)
